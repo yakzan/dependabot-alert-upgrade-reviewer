@@ -1,6 +1,6 @@
 # Dependabot Alert Upgrade Reviewer
 
-A skill for coding agents that creates PRs to address Dependabot alerts in Python repositories. Supports mono- and multi-package repos.
+A protocol for coding agents that creates PRs to address Dependabot alerts in Python repositories. Supports mono- and multi-package repos. Codex can use it as a skill via `SKILL.md` frontmatter; Copilot CLI and similar agents can be pointed at this repository path or given `examples/agent-prompt.md`.
 
 It guides the agent to:
 
@@ -16,11 +16,21 @@ It guides the agent to:
 
 The core value is the protocol in `SKILL.md`. The helper scripts are small, deterministic, and optional.
 
+When this repository is used as a helper package for another target repo, run the scripts from the target repo's working directory and reference this package by path:
+
+```bash
+python <skill-dir>/scripts/dependency_diff.py --json
+python <skill-dir>/scripts/risky_call_diff.py --json
+python <skill-dir>/scripts/risky_patterns.py --profile sqlalchemy --json
+```
+
 ## Helper scripts
 
 `dependency-diff` and `risky-call-diff` are **branch-comparison tools** — they diff between a base ref and HEAD and auto-detect the default branch. `risky-patterns` is a **disk scanner** — it searches `.py` files on disk using `--root` (default `.`) and has no `--base` flag.
 
 All scripts support `--json` for structured output.
+
+If the package is installed in the active environment, the entry points are also available:
 
 ```bash
 # Dependency file changes between branches (includes requirements, constraints, lockfiles)
@@ -41,9 +51,9 @@ Available profiles: `lifecycle`, `sqlalchemy`, `pydantic`, `pandas`, `http`, `py
 Or directly with Python:
 
 ```bash
-python scripts/dependency_diff.py --base main --head HEAD --json
-python scripts/risky_call_diff.py --base main --head HEAD --json
-python scripts/risky_patterns.py --profile sqlalchemy --json
+python <skill-dir>/scripts/dependency_diff.py --base main --head HEAD --json
+python <skill-dir>/scripts/risky_call_diff.py --base main --head HEAD --json
+python <skill-dir>/scripts/risky_patterns.py --profile sqlalchemy --json
 ```
 
 ### AST helper limitations
@@ -55,7 +65,7 @@ python scripts/risky_patterns.py --profile sqlalchemy --json
 For repositories with multiple Python packages, run pattern searches per package directory:
 
 ```bash
-uv run risky-patterns --profile sqlalchemy --root packages/lib-a
+python <skill-dir>/scripts/risky_patterns.py --profile sqlalchemy --root packages/lib-a
 ```
 
 ## Tests

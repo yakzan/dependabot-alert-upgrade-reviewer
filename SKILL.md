@@ -1,6 +1,11 @@
+---
+name: dependabot-alert-upgrade-reviewer
+description: Use when a coding agent needs to address or review Python Dependabot alerts by creating an isolated upgrade branch, applying minimal dependency changes, checking official changelogs and migration guides, searching repo-local impact, running local smoke tests, and preparing a skeptical PR risk report. Useful for Codex, Copilot CLI, and other coding agents working in Python repositories with pip, pip-tools, Poetry, uv, Pipenv, setup.py, setup.cfg, or lockfile-based dependency workflows.
+---
+
 # Dependabot Alert Upgrade Reviewer
 
-Use this skill when a repository has Dependabot alerts and a PR needs to be created to address them. Create a safe, isolated upgrade branch, apply the minimum necessary dependency changes, inspect changelogs for the exact version jump, produce a skeptical review with repo-specific smoke tests, and prepare a ready-to-push PR.
+Use this protocol when a coding agent needs to address or review Dependabot alerts. Create a safe, isolated upgrade branch, apply the minimum necessary dependency changes, inspect changelogs for the exact version jump, produce a skeptical review with repo-specific smoke tests, and prepare a ready-to-push PR.
 
 This is an agent protocol with small deterministic helpers — not an auto-migration framework. The agent may use package managers, Git, local tests, AST/grep scripts, and changelog research, but must not claim safety without evidence.
 
@@ -8,11 +13,17 @@ This is an agent protocol with small deterministic helpers — not an auto-migra
 
 **Python repositories.** The workflow and helper scripts target Python dependency managers (pip, pip-tools, Poetry, uv, Pipenv, setup.py/setup.cfg) and Python-specific migration patterns. Branch setup, changelog research, and the final report are applicable to other ecosystems, but scripts, profiles, and search patterns are Python-specific.
 
+## Agent compatibility
+
+This protocol is written for coding agents such as Codex, Copilot CLI, and similar terminal-based agents. Codex can discover the skill from the YAML frontmatter. Agents without skill discovery can be pointed directly at this `SKILL.md` file or given the prompt in `examples/agent-prompt.md`.
+
+Treat `<skill-dir>` as the directory containing this `SKILL.md`. Run bundled helper scripts from the target repository's working directory so Git comparisons and path scans operate on the repository being upgraded, not on the skill package.
+
 ## Monorepo and multi-package repos
 
 For repos with multiple Python packages (e.g., `packages/lib-a/pyproject.toml`), handle each manifest separately:
 
-1. Run helper scripts per package directory: `uv run risky-patterns --profile sqlalchemy --root packages/lib-a`
+1. Run helper scripts per package directory: `python <skill-dir>/scripts/risky_patterns.py --profile sqlalchemy --root packages/lib-a`
 2. Search each package's files independently with `rg`
 3. If packages share a root lockfile, upgrade commands apply at the root but impact search spans all packages
 4. In the final report, list each package and its affected dependency separately
@@ -29,9 +40,9 @@ Start from current repo state. Create a non-master branch, apply the minimum dep
 If changes are already committed on a branch, use the review portion only. Skip Phase 0 and Phase 3. Begin from Phase 4, using the existing diff.
 
 ```bash
-uv run risky-call-diff --json
-uv run dependency-diff --json
-uv run risky-patterns --profile sqlalchemy --json
+python <skill-dir>/scripts/risky_call_diff.py --json
+python <skill-dir>/scripts/dependency_diff.py --json
+python <skill-dir>/scripts/risky_patterns.py --profile sqlalchemy --json
 ```
 
 ## Core principle
@@ -62,6 +73,7 @@ Split into separate branches only if alerts conflict. Do not push or create the 
 8. Keep unrelated formatting and refactors out of the branch.
 9. If Python runtime migration is required, treat it as a separate risk area.
 10. Always produce a final risk report and smoke-test checklist.
+11. Never discard changes, clean untracked files, delete branches, push, or create PRs unless the user explicitly authorizes that action.
 
 ## Overall workflow
 
@@ -75,7 +87,7 @@ git branch --show-current
 git remote -v
 ```
 
-If the working tree is dirty, stop and report the dirty files. If on a protected branch, create a dedicated branch:
+If the working tree is dirty, stop and report the dirty files. If the tree is clean, create a dedicated upgrade branch unless already on a clean dedicated non-protected upgrade branch:
 
 ```bash
 git checkout -b dependabot/<package-or-topic>-<yyyy-mm-dd>
@@ -184,13 +196,15 @@ All scripts support `--json` for structured output.
 
 #### Running the scripts
 
+Prefer bundled script paths when this skill package is separate from the target repository. If the helper package has been installed into the target repo's environment, equivalent entry points such as `uv run dependency-diff --json` are also acceptable.
+
 ```bash
-uv run dependency-diff --json
-uv run risky-call-diff --json
-uv run risky-patterns --profile sqlalchemy --json
-uv run risky-patterns --profile pydantic --profile http --json
-uv run risky-patterns --profile python-runtime --profile pytest --json
-uv run risky-patterns --pattern 'session\.query' --pattern 'engine\.execute' --json
+python <skill-dir>/scripts/dependency_diff.py --json
+python <skill-dir>/scripts/risky_call_diff.py --json
+python <skill-dir>/scripts/risky_patterns.py --profile sqlalchemy --json
+python <skill-dir>/scripts/risky_patterns.py --profile pydantic --profile http --json
+python <skill-dir>/scripts/risky_patterns.py --profile python-runtime --profile pytest --json
+python <skill-dir>/scripts/risky_patterns.py --pattern 'session\.query' --pattern 'engine\.execute' --json
 ```
 
 Also run manual grep searches for patterns from Phase 4:
@@ -258,13 +272,7 @@ rg -n "from collections import Mapping|MutableMapping|Sequence" .
 rg -n "asyncio\.coroutine|loop=|imp\.|distutils" .
 ```
 
-If dependency resolution fails or tests cannot pass, abort and reset:
-
-```bash
-git checkout -- . && git clean -fd
-```
-
-Report the failure in the final risk report and recommend manual resolution.
+If dependency resolution fails or tests cannot pass, stop. Report the failure, current Git state, and the cleanup commands that would discard the upgrade attempt. Do not run cleanup commands such as `git restore`, `git clean`, or branch deletion without explicit user approval.
 
 ### Phase 8 — Final report
 
@@ -296,34 +304,36 @@ Only run these when the user explicitly asks.
 
 Use profiles when available, but do not rely on them exclusively. The changelog for the exact version range is still required. Profiles provide general search patterns; correlate them to the exact version jump. A SQLAlchemy profile for 1.x → 2.x is critical; for 2.0.x → 2.0.y patch bumps, trim to deprecation warnings only.
 
-| Profile | When to use | Key risks covered |
-|---|---|---|
-| `http` | urllib3 1.x→2.x, requests/httpx major bumps | TLS, retry, timeout, session reuse, exception hierarchy |
-| `sqlalchemy` | SQLAlchemy 1.x→2.x | `engine.execute`, `session.query` removal, autocommit, Result API |
-| `pydantic` | Pydantic 1.x→2.x | `parse_obj`/`dict`/`json` removal, validators, BaseSettings move |
-| `pandas` | pandas 1.x→2.x | dtype inference, nullable, deprecated methods, inplace/Copy-on-Write |
-| `pytest` | pytest 7.x→8.x major bumps | plugin compatibility, fixture scoping, deprecation→error, discovery |
-| `python-runtime` | Python 3.7→3.10+ migration | removed stdlib (`imp`, `distutils`), `collections.abc` move, typing |
+| Profile | Reference file | When to use | Key risks covered |
+|---|---|---|---|
+| `http` | `profiles/requests-urllib3-httpx.md` | urllib3 1.x→2.x, requests/httpx major bumps | TLS, retry, timeout, session reuse, exception hierarchy |
+| `sqlalchemy` | `profiles/sqlalchemy.md` | SQLAlchemy 1.x→2.x | `engine.execute`, `session.query` removal, autocommit, Result API |
+| `pydantic` | `profiles/pydantic.md` | Pydantic 1.x→2.x | `parse_obj`/`dict`/`json` removal, validators, BaseSettings move |
+| `pandas` | `profiles/pandas.md` | pandas 1.x→2.x | dtype inference, nullable, deprecated methods, inplace/Copy-on-Write |
+| `pytest` | `profiles/pytest.md` | pytest 7.x→8.x major bumps | plugin compatibility, fixture scoping, deprecation→error, discovery |
+| `python-runtime` | `profiles/python-runtime.md` | Python 3.7→3.10+ migration | removed stdlib (`imp`, `distutils`), `collections.abc` move, typing |
 
-Each profile file in `profiles/*.md` contains: purpose, common risks, specific `rg` search commands, smoke test guidance, and version-awareness notes. Read the profile files for full pattern lists.
+Each profile file contains: purpose, common risks, specific `rg` search commands, smoke test guidance, and version-awareness notes. Read the relevant profile files for full pattern lists. The helper script also has a `lifecycle` profile with generic resource lifecycle patterns; it has no separate reference file because the behavior-level guidance lives in Phase 6.
 
 ## Rollback guidance
 
-If the upgrade cannot proceed cleanly:
+If the upgrade cannot proceed cleanly, report what happened and ask before discarding anything. Suggested cleanup commands may include:
 
 ```bash
-git checkout -- . && git clean -fd   # discard uncommitted changes
-git checkout main && git branch -D dependabot/<topic>-<date>  # delete branch entirely
+git restore .                         # discard tracked-file changes
+git clean -fd                         # delete untracked files
+git checkout <base-branch>
+git branch -D dependabot/<topic>-<date>
 ```
 
-Report the failure clearly and recommend manual resolution.
+Only run these after explicit user approval.
 
-## Good agent prompt
+## General coding-agent prompt
 
 ```text
-Use the Dependabot Alert Upgrade Reviewer skill.
+Use the Dependabot Alert Upgrade Reviewer protocol in <skill-dir>/SKILL.md.
 
-We do not have a PR yet. Start from the current repository state. Do not work on main/master. Create a dedicated upgrade branch if the tree is clean. Inspect Dependabot alerts, choose the smallest safe dependency upgrade, review official changelogs/migration notes for the exact version jump, apply the dependency change using the repo's existing package manager, commit the changes, search changed and unchanged code for affected APIs, add or propose behavior-level smoke tests, run only local validation, and finish with the skill's final risk report.
+We do not have a PR yet. Start from the current repository state. Do not work on main/master. Create a dedicated upgrade branch if the tree is clean. Inspect Dependabot alerts, choose the smallest safe dependency upgrade, review official changelogs/migration notes for the exact version jump, apply the dependency change using the repo's existing package manager, commit the changes if allowed, search changed and unchanged code for affected APIs, add or propose behavior-level smoke tests, run only local validation, and finish with the protocol's final risk report.
 
 When multiple alerts exist, batch related alerts on one branch and note any conflicts.
 
