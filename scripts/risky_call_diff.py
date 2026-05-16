@@ -7,14 +7,17 @@ calls disappear or appear across a migration branch.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import subprocess
 from dataclasses import asdict, dataclass, field
 
 RISKY_NAMES = {
     "save", "close", "commit", "rollback", "flush", "execute", "connect", "dispose",
-    "open", "read", "write", "delete", "update", "insert", "parse", "validate",
-    "dict", "json", "model_dump", "model_validate", "raise_for_status",
+    "open", "read", "write",
+    "model_dump", "model_dump_json", "model_validate", "model_validate_json",
+    "parse_obj", "parse_raw",
+    "raise_for_status",
 }
 
 LIFECYCLE_NAMES = {"close", "commit", "rollback", "flush", "dispose"}
@@ -118,9 +121,7 @@ class DiffResult:
         return "\n".join(lines)
 
 
-def call_name(node: object) -> str | None:
-    import ast
-
+def call_name(node: ast.expr) -> str | None:
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
@@ -128,9 +129,7 @@ def call_name(node: object) -> str | None:
     return None
 
 
-def _collect_direct_calls(node: object) -> list[str]:
-    import ast
-
+def _collect_direct_calls(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
     calls: list[str] = []
 
     def _walk(n: ast.AST) -> None:
@@ -143,13 +142,11 @@ def _collect_direct_calls(node: object) -> list[str]:
                     calls.append(name)
             _walk(child)
 
-    _walk(node)  # type: ignore[arg-type]
+    _walk(node)
     return calls
 
 
 def extract_calls(src: str) -> dict[str, FuncCalls]:
-    import ast
-
     if not src.strip():
         return {}
     try:

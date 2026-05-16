@@ -14,6 +14,7 @@ from pathlib import Path
 
 DEP_FILES = (
     "requirements",
+    "constraints",
     "pyproject.toml",
     "poetry.lock",
     "uv.lock",
@@ -27,7 +28,7 @@ DEP_FILES = (
 
 
 def run(cmd: list[str]) -> str:
-    return subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT)
+    return subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
 
 
 def detect_default_branch() -> str:

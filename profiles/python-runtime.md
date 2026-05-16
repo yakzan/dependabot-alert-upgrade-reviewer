@@ -1,35 +1,42 @@
 # Python runtime profile: 3.7 -> 3.10+
 
-Use when the alert cannot be resolved while staying on Python 3.7 or when upgraded dependencies require Python 3.8/3.9/3.10+.
+Use when the alert cannot be resolved while staying on Python 3.7 or when upgraded dependencies require Python 3.8/3.9/3.10+. Bumps within 3.10+ generally don't need this profile.
 
 ## Common risks
 
-- dependencies dropping Python 3.7 support
-- old `typing` / `typing_extensions` assumptions
-- removed imports from `collections`
-- deprecated `asyncio` loop parameters
-- `distutils` usage
-- changed dependency resolver behavior
-- old build backends or setuptools pinning
-- wheels unavailable for old platforms
+- dependencies dropping Python 3.7/3.8 support
+- removed stdlib modules: `imp`, `distutils`, `parser`, `formatter`
+- moved ABCs: `collections.abc` replaces `collections.Mapping`/`Sequence`/`Mutable*`
+- `typing` module: deprecated aliases (`typing.List`, `typing.Dict`, etc.) may be removed
+- `typing_extensions` imports needed for forward-compatible type annotations
+- `asyncio.coroutine` removed; `loop=` parameter deprecated in many functions
+- `dataclasses` backport no longer relevant (stdlib since 3.7, stable since 3.8)
+- `importlib_metadata`, `pathlib2`, `configparser` backports unnecessary on 3.8+
+- build backend compatibility (setuptools, wheel, build)
+- wheel availability for target platform/architecture
+- match/case pattern matching (3.10+) incompatible with older Python
 
 ## Searches
 
 ```bash
-rg -n "from collections import .*Mapping|from collections import .*Sequence|from collections import .*Mutable" .
-rg -n "asyncio\.coroutine|loop=|get_event_loop\(" .
-rg -n "import imp|from imp import|distutils" .
-rg -n "typing_extensions|dataclasses|importlib_metadata|pathlib2|configparser" .
-rg -n "python_requires|requires-python|Programming Language :: Python :: 3\.7" .
+rg -n "from collections import" .
+rg -n "asyncio\.coroutine|get_event_loop|loop=" .
+rg -n "import imp\b|from imp import|distutils" .
+rg -n "typing_extensions|dataclasses|importlib_metadata" .
+rg -n "pathlib2|configparser" .
+rg -n "python_requires|requires-python" .
+rg -n "Programming Language :: Python :: 3\.[0-9]" .
+rg -n "match .*:" .
 ```
 
 ## Smoke tests
 
-- import all application modules
+- import all application modules with `python -c "import pkg"` for each top-level package
 - run CLI entrypoints with `--help`
 - run minimal job/task execution locally
 - run serialization/deserialization round trips
 - run dependency import checks with `python -m pip check`
+- compile all files: `python -m compileall .`
 
 ## Version awareness
 

@@ -16,6 +16,9 @@ class TestIsDepFile:
     def test_requirements_dev_txt(self):
         assert is_dep_file("requirements-dev.txt") is True
 
+    def test_constraints_txt(self):
+        assert is_dep_file("constraints.txt") is True
+
     def test_requirements_production_txt(self):
         assert is_dep_file("requirements-production.txt") is True
 
@@ -64,6 +67,7 @@ class TestIsDepFile:
     def test_exact_dep_file_list(self):
         assert DEP_FILES == (
             "requirements",
+            "constraints",
             "pyproject.toml",
             "poetry.lock",
             "uv.lock",

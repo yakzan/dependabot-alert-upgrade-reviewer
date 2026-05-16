@@ -110,6 +110,12 @@ class TestRiskyNames:
         assert "rollback" in RISKY_NAMES
         assert "flush" in RISKY_NAMES
         assert "dispose" in RISKY_NAMES
+        assert "save" in RISKY_NAMES
+        assert "execute" in RISKY_NAMES
+        assert "connect" in RISKY_NAMES
+        assert "open" in RISKY_NAMES
+        assert "read" in RISKY_NAMES
+        assert "write" in RISKY_NAMES
 
     def test_lifecycle_names_constant(self):
         assert LIFECYCLE_NAMES == {"close", "commit", "rollback", "flush", "dispose"}
@@ -120,6 +126,10 @@ class TestRiskyNames:
     def test_pydantic_names_present(self):
         assert "model_dump" in RISKY_NAMES
         assert "model_validate" in RISKY_NAMES
+        assert "model_dump_json" in RISKY_NAMES
+        assert "model_validate_json" in RISKY_NAMES
+        assert "parse_obj" in RISKY_NAMES
+        assert "parse_raw" in RISKY_NAMES
 
 
 class TestDiffResult:

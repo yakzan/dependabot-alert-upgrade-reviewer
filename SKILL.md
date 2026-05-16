@@ -8,6 +8,27 @@ This skill is intentionally not an auto-migration framework. It is an agent prot
 
 This skill is written for **Python repositories**. The workflow and helper scripts target Python dependency managers (pip, pip-tools, Poetry, uv, Pipenv, setup.py/setup.cfg) and Python-specific migration patterns. Some phases (branch setup, changelog research, final report) are applicable to other ecosystems, but the scripts, profiles, and search patterns are Python-specific.
 
+## Monorepo and multi-package repos
+
+When the repository contains multiple Python packages (e.g., `packages/lib-a/pyproject.toml`, `packages/lib-b/pyproject.toml`), handle each manifest file separately:
+
+1. Run the helper scripts for each package directory using `--root`:
+   ```bash
+   uv run risky-patterns --profile sqlalchemy --root packages/lib-a
+   ```
+
+2. Search each package's files independently:
+   ```bash
+   rg -n "pattern" packages/lib-a/
+   rg -n "pattern" packages/lib-b/
+   ```
+
+3. If packages share a single lockfile at the repository root, upgrade commands still apply at the root but the impact search spans all packages.
+
+4. In the final report, list each package and its affected dependency separately.
+
+5. If a dependency affects multiple packages differently (e.g., lib-a uses SQLAlchemy 1.4 directly while lib-b imports it transitively), trace both dependency chains and report per-package risk.
+
 ## Two invocation modes
 
 ### Mode 1 — Full upgrade (default)
@@ -290,12 +311,15 @@ uv run risky-call-diff --json
 # Pattern search using profiles or custom patterns
 uv run risky-patterns --profile sqlalchemy --json
 uv run risky-patterns --profile pydantic --profile http --json
+uv run risky-patterns --profile python-runtime --profile pytest --json
 uv run risky-patterns --pattern 'session\.query' --pattern 'engine\.execute' --json
 ```
 
 All scripts support `--json` for structured output that is easier to parse programmatically.
 
 If `--base` is not specified, the scripts auto-detect the default branch (`origin/HEAD`, then `main`, then `master`, falling back to `main`).
+
+**Cross-reference script outputs:** Correlate `dependency-diff` (which dependency files changed) with `risky-call-diff` (which risky calls appeared/disappeared in changed Python files) and `risky-patterns` (which patterns still exist in the repo). A lifecycle call removed in a file that is NOT in a dependency-changed path is lower-risk than one removed in a file that imports a bumped dependency. Focus investigation on files changed in the diff whose patterns match the upgraded package's migration guide.
 
 Classify findings:
 

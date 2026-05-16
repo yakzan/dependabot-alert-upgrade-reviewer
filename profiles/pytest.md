@@ -1,22 +1,25 @@
 # pytest profile
 
-Use for pytest major upgrades and plugin-related updates.
+Use for pytest major upgrades and plugin-related updates. Most relevant for major version bumps (e.g., 7.x -> 8.x).
 
 ## Common risks
 
-- plugin compatibility
-- fixture behavior changes
-- warning handling changes
-- import path / test discovery changes
-- deprecated marks/options removed
+- plugin compatibility across major versions
+- fixture scoping and teardown behavior changes
+- warning handling and deprecation promotion to errors
+- test discovery changes (import mode, conftest loading)
+- deprecated marks/options removed or renamed
+- `yield` fixture behavior differences
+- config file parsing changes (`pytest.ini`, `pyproject.toml`, `tox.ini`)
 
 ## Searches
 
 ```bash
-rg -n "pytest_plugins|@pytest\.fixture|yield" tests .
-rg -n "filterwarnings|pytest\.mark|xfail|skipif" .
+rg -n "pytest_plugins|@pytest\.fixture|yield" tests/ .
+rg -n "pytest\.mark|xfail|skipif" .
 rg -n "pytest\.raises|warns\(|deprecated_call" .
-rg -n "addopts|pytest.ini|tox.ini|pyproject.toml" .
+rg -n "filterwarnings|addopts|testpaths" .
+rg -n "pytest\.ini|conftest\.py|pyproject\.toml" .
 ```
 
 ## Smoke tests
@@ -25,6 +28,7 @@ rg -n "addopts|pytest.ini|tox.ini|pyproject.toml" .
 - run full local test suite if feasible
 - compare test collection count before/after if possible
 - inspect warnings promoted to errors
+- verify plugin-dependent features still work (coverage, xdist, etc.)
 
 ## Version awareness
 

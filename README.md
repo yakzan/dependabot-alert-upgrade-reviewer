@@ -1,6 +1,6 @@
 # Dependabot Alert Upgrade Reviewer
 
-A skill for coding agents that creates PRs to address Dependabot alerts in Python repositories.
+A skill for coding agents that creates PRs to address Dependabot alerts in Python repositories. Supports mono- and multi-package repos.
 
 It guides the agent to:
 
@@ -21,17 +21,20 @@ The core value is the protocol in `SKILL.md`. The helper scripts are small, dete
 All scripts support `--json` for structured output and auto-detect the default branch.
 
 ```bash
-# Dependency file changes between branches
+# Dependency file changes between branches (includes requirements, constraints, lockfiles)
 uv run dependency-diff --json
 
-# Risky call changes (lifecycle calls added/removed)
+# Risky call changes (lifecycle calls added/removed, focusing on resource management)
 uv run risky-call-diff --json
 
 # Pattern search using profiles or custom patterns
 uv run risky-patterns --profile sqlalchemy --json
 uv run risky-patterns --profile pydantic --profile http --json
+uv run risky-patterns --profile python-runtime --profile pytest --json
 uv run risky-patterns --pattern 'session\.query' --json
 ```
+
+Available profiles: `lifecycle`, `sqlalchemy`, `pydantic`, `pandas`, `http`, `pytest`, `python-runtime`.
 
 Or directly with Python:
 
@@ -39,6 +42,14 @@ Or directly with Python:
 python scripts/dependency_diff.py --base main --head HEAD --json
 python scripts/risky_call_diff.py --base main --head HEAD --json
 python scripts/risky_patterns.py --profile sqlalchemy --json
+```
+
+## Monorepos
+
+For repositories with multiple Python packages, run pattern searches per package directory:
+
+```bash
+uv run risky-patterns --profile sqlalchemy --root packages/lib-a
 ```
 
 ## Tests

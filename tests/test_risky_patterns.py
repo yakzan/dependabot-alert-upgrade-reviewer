@@ -13,6 +13,8 @@ class TestProfiles:
         assert "pydantic" in PROFILES
         assert "pandas" in PROFILES
         assert "http" in PROFILES
+        assert "pytest" in PROFILES
+        assert "python-runtime" in PROFILES
 
     def test_profiles_are_valid_regex(self):
         import re
