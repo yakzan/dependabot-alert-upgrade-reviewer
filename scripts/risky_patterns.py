@@ -54,12 +54,15 @@ PROFILES = {
     ],
     "http": [
         r"requests\.", r"urllib3", r"httpx\.",
-        r"\.get\b", r"\.post\b", r"\.put\b", r"\.delete\b", r"\.request\(",
+        r"requests\.get\(", r"requests\.post\(", r"requests\.put\(",
+        r"requests\.delete\(", r"requests\.request\(",
+        r"httpx\.get\(", r"httpx\.post\(", r"httpx\.put\(",
+        r"httpx\.delete\(", r"httpx\.request\(",
         r"timeout=", r"verify=", r"cert=", r"proxies=",
         r"Retry\(", r"HTTPAdapter", r"mount\(",
         r"Session\(", r"raise_for_status",
         r"ConnectionError", r"Timeout\b", r"SSLError", r"HTTPError",
-        r"stream=", r"allow_redirects", r"\bclose\(",
+        r"stream=", r"allow_redirects",
     ],
     "pytest": [
         r"pytest_plugins", r"@pytest\.fixture", r"yield",

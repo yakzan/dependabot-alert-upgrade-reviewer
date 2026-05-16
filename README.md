@@ -18,7 +18,9 @@ The core value is the protocol in `SKILL.md`. The helper scripts are small, dete
 
 ## Helper scripts
 
-All scripts support `--json` for structured output and auto-detect the default branch.
+`dependency-diff` and `risky-call-diff` are **branch-comparison tools** — they diff between a base ref and HEAD and auto-detect the default branch. `risky-patterns` is a **disk scanner** — it searches `.py` files on disk using `--root` (default `.`) and has no `--base` flag.
+
+All scripts support `--json` for structured output.
 
 ```bash
 # Dependency file changes between branches (includes requirements, constraints, lockfiles)
@@ -27,7 +29,7 @@ uv run dependency-diff --json
 # Risky call changes (lifecycle calls added/removed, focusing on resource management)
 uv run risky-call-diff --json
 
-# Pattern search using profiles or custom patterns
+# Pattern search using profiles or custom patterns (scans disk, not git diff)
 uv run risky-patterns --profile sqlalchemy --json
 uv run risky-patterns --profile pydantic --profile http --json
 uv run risky-patterns --profile python-runtime --profile pytest --json
@@ -43,6 +45,10 @@ python scripts/dependency_diff.py --base main --head HEAD --json
 python scripts/risky_call_diff.py --base main --head HEAD --json
 python scripts/risky_patterns.py --profile sqlalchemy --json
 ```
+
+### AST helper limitations
+
+`risky-call-diff` uses Python AST parsing to detect function calls. It is a heuristic, not a semantic analyzer. It will **not** catch aliased imports, indirect calls (`fn = obj.commit; fn()`), decorator-based lifecycle patterns, or chained calls (`obj.get_session().commit()` only detects the outermost). Treat its output as a starting point, supplemented by `risky-patterns` regex scans and manual `rg` searches.
 
 ## Monorepos
 

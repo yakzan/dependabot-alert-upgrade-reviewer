@@ -18,12 +18,13 @@ Use for HTTP client dependency updates, including common security alerts. Most r
 
 ```bash
 rg -n "requests\.|urllib3|httpx\." .
-rg -n "\.get\(|\.post\(|\.put\(|\.delete\(|\.request\(" .
+rg -n "requests\.get\(|requests\.post\(|requests\.put\(|requests\.delete\(|requests\.request\(" .
+rg -n "httpx\.get\(|httpx\.post\(|httpx\.put\(|httpx\.delete\(|httpx\.request\(" .
 rg -n "Session\(|with requests|with httpx" .
 rg -n "verify=|cert=|proxies=|timeout=|stream=|allow_redirects" .
 rg -n "Retry\(|HTTPAdapter|mount\(|PoolManager" .
 rg -n "raise_for_status|ConnectionError|Timeout\b|SSLError|HTTPError" .
-rg -n "\bclose\(|MaxRetryError|NewConnectionError" .
+rg -n "MaxRetryError|NewConnectionError" .
 ```
 
 ## Smoke tests

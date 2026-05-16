@@ -1,43 +1,32 @@
 # Dependabot Alert Upgrade Reviewer
 
-Use this skill when a repository has Dependabot alerts and a PR needs to be created to address them. The goal is to create a safe, isolated upgrade branch, apply the minimum necessary dependency/runtime changes, inspect changelogs and migration notes for the exact version jump, produce a skeptical review with repo-specific smoke tests, and prepare a ready-to-push PR.
+Use this skill when a repository has Dependabot alerts and a PR needs to be created to address them. Create a safe, isolated upgrade branch, apply the minimum necessary dependency changes, inspect changelogs for the exact version jump, produce a skeptical review with repo-specific smoke tests, and prepare a ready-to-push PR.
 
-This skill is intentionally not an auto-migration framework. It is an agent protocol with small deterministic helpers. The agent may use package managers, Git, local tests, AST/grep scripts, and changelog research, but must not claim safety without evidence.
+This is an agent protocol with small deterministic helpers — not an auto-migration framework. The agent may use package managers, Git, local tests, AST/grep scripts, and changelog research, but must not claim safety without evidence.
 
 ## Scope
 
-This skill is written for **Python repositories**. The workflow and helper scripts target Python dependency managers (pip, pip-tools, Poetry, uv, Pipenv, setup.py/setup.cfg) and Python-specific migration patterns. Some phases (branch setup, changelog research, final report) are applicable to other ecosystems, but the scripts, profiles, and search patterns are Python-specific.
+**Python repositories.** The workflow and helper scripts target Python dependency managers (pip, pip-tools, Poetry, uv, Pipenv, setup.py/setup.cfg) and Python-specific migration patterns. Branch setup, changelog research, and the final report are applicable to other ecosystems, but scripts, profiles, and search patterns are Python-specific.
 
 ## Monorepo and multi-package repos
 
-When the repository contains multiple Python packages (e.g., `packages/lib-a/pyproject.toml`, `packages/lib-b/pyproject.toml`), handle each manifest file separately:
+For repos with multiple Python packages (e.g., `packages/lib-a/pyproject.toml`), handle each manifest separately:
 
-1. Run the helper scripts for each package directory using `--root`:
-   ```bash
-   uv run risky-patterns --profile sqlalchemy --root packages/lib-a
-   ```
-
-2. Search each package's files independently:
-   ```bash
-   rg -n "pattern" packages/lib-a/
-   rg -n "pattern" packages/lib-b/
-   ```
-
-3. If packages share a single lockfile at the repository root, upgrade commands still apply at the root but the impact search spans all packages.
-
-4. In the final report, list each package and its affected dependency separately.
-
-5. If a dependency affects multiple packages differently (e.g., lib-a uses SQLAlchemy 1.4 directly while lib-b imports it transitively), trace both dependency chains and report per-package risk.
+1. Run helper scripts per package directory: `uv run risky-patterns --profile sqlalchemy --root packages/lib-a`
+2. Search each package's files independently with `rg`
+3. If packages share a root lockfile, upgrade commands apply at the root but impact search spans all packages
+4. In the final report, list each package and its affected dependency separately
+5. If a dependency affects multiple packages differently, trace both dependency chains and report per-package risk
 
 ## Two invocation modes
 
 ### Mode 1 — Full upgrade (default)
 
-Start from the current repository state. Create a dedicated non-master branch, apply the minimum dependency change, search for affected code, run local smoke tests, and produce a final risk report with a suggested PR body.
+Start from current repo state. Create a non-master branch, apply the minimum dependency change, search for affected code, run smoke tests, produce a final risk report with a suggested PR body.
 
 ### Mode 2 — Review existing changes
 
-If there are already committed changes on a branch (e.g., a sequence of manual upgrades or a combined Dependabot alert fix), use the review portion of this skill to evaluate the existing diff.
+If changes are already committed on a branch, use the review portion only. Skip Phase 0 and Phase 3. Begin from Phase 4, using the existing diff.
 
 ```bash
 uv run risky-call-diff --json
@@ -45,21 +34,13 @@ uv run dependency-diff --json
 uv run risky-patterns --profile sqlalchemy --json
 ```
 
-In this mode, skip Phase 0 (branch creation) and Phase 3 (dependency changes). Begin from Phase 4, using the already-committed changes as the diff to evaluate.
-
 ## Core principle
 
-Dependabot tells us what is vulnerable or outdated. It does not prove that the upgrade is behaviorally safe.
-
-Your job is not to prove the migration is correct. Your job is to find what could be missed.
-
-Never claim the upgrade is proven safe solely because tests pass.
+Dependabot tells us what is vulnerable or outdated. It does not prove the upgrade is behaviorally safe. Your job is not to prove the migration is correct — it is to find what could be missed. Never claim the upgrade is proven safe solely because tests pass.
 
 ## Multi-alert handling
 
-A single Dependabot alert is the simplest case. Real repositories often have 5-15 alerts. The default strategy is **one branch, one batched PR**. This keeps the review tractable and makes rollback straightforward.
-
-Group alerts by topic when possible:
+Default strategy: **one branch, one batched PR.** Group related alerts by topic:
 
 ```text
 security/http-clients:  urllib3 1.26.x -> 2.x, requests 2.28 -> 2.32
@@ -67,28 +48,26 @@ security/sqlalchemy:   SQLAlchemy 1.4 -> 2.0
 runtime/python:        Python 3.7 -> 3.10 (if required by the above)
 ```
 
-If alerts conflict (e.g., one requires a library upgrade that another depends on the old version of), split into separate branches. Otherwise, batch related alerts together.
-
-Do not push or create the PR until the user explicitly asks. Prepare the branch, changes, and report locally first.
+Split into separate branches only if alerts conflict. Do not push or create the PR until the user explicitly asks.
 
 ## Hard rules
 
 1. Never work directly on `master`, `main`, or a protected branch.
 2. Never claim the upgrade is proven safe solely because tests pass.
-3. Never inspect only changed files. Also inspect suspicious untouched files.
+3. Never inspect only changed files — also inspect suspicious untouched files.
 4. Never summarize changelogs without mapping them to repo-local searches.
-5. Never perform production-affecting commands or remote writes (no `git push`, no `gh pr create`, no deploy) unless the user explicitly authorizes it.
+5. Never push, create PRs, or deploy unless the user explicitly authorizes it.
 6. Run only local tests unless the user explicitly authorizes external systems.
 7. Prefer the smallest dependency change that resolves the alert.
 8. Keep unrelated formatting and refactors out of the branch.
-9. If Python runtime migration is required, treat it as a separate risk area, not just a dependency bump.
+9. If Python runtime migration is required, treat it as a separate risk area.
 10. Always produce a final risk report and smoke-test checklist.
 
 ## Overall workflow
 
 ### Phase 0 — Establish safe branch
 
-First inspect Git state:
+Inspect Git state:
 
 ```bash
 git status --short
@@ -96,230 +75,146 @@ git branch --show-current
 git remote -v
 ```
 
-If the working tree is dirty, stop and report the dirty files. Do not overwrite user changes.
-
-If current branch is `main`, `master`, `develop`, or another protected branch, create a dedicated branch.
-
-Recommended branch naming:
-
-```text
-dependabot/<package-or-topic>-<yyyy-mm-dd>
-upgrade/<package-or-topic>-<yyyy-mm-dd>
-security/<package-or-topic>-<yyyy-mm-dd>
-```
-
-Example:
+If the working tree is dirty, stop and report the dirty files. If on a protected branch, create a dedicated branch:
 
 ```bash
-git checkout -b dependabot/urllib3-2026-05-16
+git checkout -b dependabot/<package-or-topic>-<yyyy-mm-dd>
 ```
 
-If the user works from a fork, verify that `origin` is the fork and `upstream` is the original repository when available:
-
-```bash
-git remote -v
-```
-
-If `gh` is available and authenticated, inspect repository metadata:
-
-```bash
-gh repo view --json nameWithOwner,defaultBranchRef,isFork,parent
-```
-
-Do not push or create a PR unless the user explicitly asks.
+If the user works from a fork, verify `origin`/`upstream` remotes. Do not push unless the user explicitly asks.
 
 ### Phase 1 — Collect Dependabot alert context
 
-Prefer GitHub CLI when available:
+Prefer GitHub CLI:
 
 ```bash
 gh api repos/:owner/:repo/dependabot/alerts --paginate --jq '.[] | {number, state, dependency: .dependency.package.name, ecosystem: .dependency.package.ecosystem, manifest: .dependency.manifest_path, vulnerable_requirements: .security_vulnerability.vulnerable_version_range, patched_versions: .security_vulnerability.first_patched_version.identifier, severity: .security_advisory.severity, summary: .security_advisory.summary}'
 ```
 
-If GitHub CLI is unavailable, ask the user to paste the alert details or use the GitHub web UI. Required fields:
+If unavailable, ask the user for: package name, ecosystem, manifest path, vulnerable version range, first patched version, severity, advisory summary.
 
-- package name
-- ecosystem, usually `pip`
-- manifest path
-- vulnerable version range
-- first patched version, if available
-- severity
-- advisory summary
+Classify: critical/high first; direct vs transitive; runtime-related alerts that may imply a Python version bump.
 
-Classify alerts:
-
-```text
-Critical/high severity -> prioritize first
-Direct dependency -> usually actionable in manifest
-Transitive dependency -> may require lockfile update or parent dependency bump
-Runtime-related dependency -> may imply Python version bump
-```
-
-For **transitive dependencies**, trace the dependency chain to determine why the vulnerable version is installed and which direct dependency pins it:
+For **transitive dependencies**, trace the chain:
 
 ```bash
-# pip
-python -m pip show <vulnerable-package>
-python -m pipdeptree -p <vulnerable-package>
-
-# uv
-uv pip show <vulnerable-package>
-
-# Poetry
-poetry show --tree
+python -m pip show <pkg> && python -m pipdeptree -p <pkg>
+# or: uv pip show <pkg> / poetry show --tree
 ```
-
-Determine whether the fix requires bumping the transitive dependency directly (e.g., via a constraint override) or bumping the parent that pins it.
 
 ### Phase 2 — Create an upgrade plan before editing
 
-For each alert, determine:
-
-- current installed/locked version
-- minimum safe patched version
-- whether Python version constraints allow that patched version
-- whether the dependency is direct or transitive
-- which package manager is used: pip, pip-tools, Poetry, uv, Pipenv, setup.py/setup.cfg
-
-Inspect files:
+For each alert determine: current version, minimum patched version, Python version constraints, direct vs transitive, which package manager is used. Inspect manifest files:
 
 ```bash
-ls
 find . -maxdepth 3 \( -name 'pyproject.toml' -o -name 'requirements*.txt' -o -name 'poetry.lock' -o -name 'uv.lock' -o -name 'Pipfile.lock' -o -name 'setup.py' -o -name 'setup.cfg' -o -name 'tox.ini' -o -name '.python-version' \)
 ```
 
-Produce a short plan:
+Produce a short plan per alert:
 
 ```text
 Alert: package A current X -> patched >= Y
 Manifest: requirements.txt
 Likely action: bump direct pin or regenerate lockfile
-Python risk: patched version requires Python >= 3.8, repo appears to use 3.7
-Transitive: package A is pulled in by package B >= 2.0; bumping B may resolve it
+Python risk: patched version requires Python >= 3.8, repo uses 3.7
+Transitive: pulled in by package B >= 2.0; bumping B may resolve it
 Changelog review required: yes/no
-Expected smoke tests: ...
 ```
 
 ### Phase 3 — Apply minimum dependency changes
 
-Use the repository's existing dependency workflow. Do not introduce a new dependency manager just for the migration.
-
-Common commands:
+Use the repo's existing dependency workflow. Common commands:
 
 ```bash
-# pip-tools
-python -m piptools compile requirements.in
-
-# Poetry
-poetry update <package>
-
-# uv
-uv lock --upgrade-package <package>
-
-# pipenv
-pipenv update <package>
+python -m piptools compile requirements.in   # pip-tools
+poetry update <package>                       # Poetry
+uv lock --upgrade-package <package>           # uv
+pipenv update <package>                       # Pipenv
 ```
 
-If a repo only has `requirements.txt`, edit the direct pin cautiously and install in a local virtual environment.
+If a repo only has `requirements.txt`, edit the direct pin cautiously and install in a local venv.
 
-After dependency changes, commit them before proceeding to Phase 5. The diff-based scripts require comparing the base branch against the current branch:
-
-```bash
-git add -A
-git commit -m "bump <package> from X to Y"
-```
-
-Then inspect the diff:
+Commit dependency changes before Phase 5 (the diff-based scripts require committed changes):
 
 ```bash
+git add -A && git commit -m "bump <package> from X to Y"
 git diff --stat
-git diff -- requirements.txt requirements-dev.txt pyproject.toml poetry.lock uv.lock Pipfile.lock setup.py setup.cfg tox.ini .python-version
 ```
 
 Flag noisy lockfile explosions or unrelated dependency changes.
 
 ### Phase 4 — Changelog and migration-guide scout
 
-For every package/version jump, gather official or highest-quality sources. Prefer programmatic sources first:
+For every version jump, gather official sources. Programmatic sources first:
 
-1. **GitHub Releases API** — `gh api repos/:owner/:repo/releases --paginate --jq '.[] | {tag_name, name, body}' | head -200`
-2. **PyPI JSON API** — `https://pypi.org/pypi/<package>/<version>/json` (check changelog links, requires_python, and dependencies)
-3. **Official migration guide** — search the project's documentation site
-4. **Official changelog** — usually in the repo's `CHANGELOG.md` or `HISTORY.rst`
-5. **Breaking changes between exact versions** — use GitHub compare: `https://github.com/<owner>/<repo>/compare/<old-tag>...<new-tag>`
+1. **GitHub Releases API** — `gh api repos/:owner/:repo/releases --paginate --jq '.[] | {tag_name, name, body}'`
+2. **PyPI JSON API** — `https://pypi.org/pypi/<package>/<version>/json`
+3. **Official migration guide** — project documentation site
+4. **Official changelog** — `CHANGELOG.md` or `HISTORY.rst`
+5. **Breaking changes** — `https://github.com/<owner>/<repo>/compare/<old-tag>...<new-tag>`
 
-Extract only actionable items:
+Extract only actionable items: removed APIs, changed defaults, changed exception/validation/serialization behavior, changed transaction/session/resource lifecycle, changed typing/import paths, changed minimum Python version, security-specific guidance.
 
-- removed APIs
-- changed defaults
-- changed exception behavior
-- changed serialization/deserialization behavior
-- changed validation behavior
-- changed transaction/session/resource lifecycle behavior
-- changed typing/import paths
-- changed minimum Python version
-- security-specific behavioral guidance
+For each item, create repo-local search patterns. Always map abstract risks to concrete `rg` commands and smoke tests.
 
-For each item, create repo-local search patterns.
-
-Bad:
+**Bad:** "SQLAlchemy changed transaction behavior."
+**Good:**
 
 ```text
-SQLAlchemy changed transaction behavior.
-```
-
-Good:
-
-```text
-Release-note risk: SQLAlchemy removed implicit autocommit / changed 2.0 execution style.
-Repo searches:
-- session.query
-- engine.execute
-- autocommit
-- commit
-- rollback
-- close
-- sessionmaker
-- scoped_session
-Smoke tests:
-- successful write commits and closes
-- failed write rolls back and closes
-- repeated calls do not exhaust connections
+Risk: SQLAlchemy removed implicit autocommit / changed 2.0 execution style.
+Searches: session.query, engine.execute, autocommit, commit, rollback, close, sessionmaker, scoped_session
+Smoke tests: successful write commits+closes, failed write rolls back+closes, repeated calls don't exhaust connections
 ```
 
 ### Phase 5 — Repo-local impact search
 
-**Important:** Phase 3 changes must be committed before running the diff-based scripts in this phase. The scripts compare the base branch against HEAD; if there are no committed changes, the diff will be empty.
+**Important:** Phase 3 changes must be committed before running the diff-based scripts. They compare the base branch against HEAD; no committed changes means an empty diff.
 
-Search both changed and unchanged files. Use grep/ripgrep first, then AST helpers when useful.
+#### Script purposes
+
+| Script | What it does | Key flag |
+|---|---|---|
+| `dependency-diff` | Shows dependency files changed between branches | `--base` (auto-detects default branch) |
+| `risky-call-diff` | Shows risky function calls added/removed in changed `.py` files between branches | `--base` (auto-detects default branch) |
+| `risky-patterns` | Scans `.py` files on disk for regex patterns (no git diff) | `--root` (default `.`) |
+
+`dependency-diff` and `risky-call-diff` are **branch-comparison tools** — they need a base ref. `risky-patterns` is a **disk scanner** — it searches the working tree and uses `--root` to scope the directory, not `--base`.
+
+All scripts support `--json` for structured output.
+
+#### Running the scripts
 
 ```bash
-rg -n "session\.query|engine\.execute|autocommit|commit\(|rollback\(|close\(" .
-rg -n "parse_obj|dict\(|json\(|BaseModel|validator|root_validator" .
-rg -n "read_csv|to_datetime|astype|fillna|groupby|merge" .
-```
-
-Run helper scripts. Use `--json` for machine-readable output:
-
-```bash
-# Dependency file changes (auto-detects default branch)
 uv run dependency-diff --json
-
-# Risky call changes between branches
 uv run risky-call-diff --json
-
-# Pattern search using profiles or custom patterns
 uv run risky-patterns --profile sqlalchemy --json
 uv run risky-patterns --profile pydantic --profile http --json
 uv run risky-patterns --profile python-runtime --profile pytest --json
 uv run risky-patterns --pattern 'session\.query' --pattern 'engine\.execute' --json
 ```
 
-All scripts support `--json` for structured output that is easier to parse programmatically.
+Also run manual grep searches for patterns from Phase 4:
 
-If `--base` is not specified, the scripts auto-detect the default branch (`origin/HEAD`, then `main`, then `master`, falling back to `main`).
+```bash
+rg -n "session\.query|engine\.execute|autocommit|commit\(|rollback\(|close\(" .
+rg -n "parse_obj|dict\(|json\(|BaseModel|validator|root_validator" .
+```
 
-**Cross-reference script outputs:** Correlate `dependency-diff` (which dependency files changed) with `risky-call-diff` (which risky calls appeared/disappeared in changed Python files) and `risky-patterns` (which patterns still exist in the repo). A lifecycle call removed in a file that is NOT in a dependency-changed path is lower-risk than one removed in a file that imports a bumped dependency. Focus investigation on files changed in the diff whose patterns match the upgraded package's migration guide.
+#### AST helper limitations
+
+`risky-call-diff` uses Python AST parsing to detect function calls. It is a **heuristic**, not a semantic analyzer. It **will not** catch:
+
+- **Aliased imports** — `from sqlalchemy import sessionmaker as sm` → `sm()` won't be recognized as `sessionmaker`
+- **Indirect calls** — `fn = session.commit; fn()` won't be detected
+- **Decorator-based patterns** — `@contextmanager` or `@pytest.fixture` resource lifecycle is invisible to AST walk
+- **Chained/composed calls** — `obj.get_session().commit()` only detects the outermost call
+- **Dynamic dispatch** — `getattr(obj, 'commit')()` or `__call__` overrides
+
+Treat `risky-call-diff` output as a starting point for investigation, not exhaustive coverage. Always supplement with `risky-patterns` (regex scan) and manual `rg` searches.
+
+#### Cross-referencing outputs
+
+Correlate `dependency-diff` (which dep files changed), `risky-call-diff` (which risky calls appeared/disappeared in changed files), and `risky-patterns` (which patterns exist on disk). A lifecycle call removed in a file NOT in a dependency-changed path is lower-risk than one removed in a file that imports the bumped dependency.
 
 Classify findings:
 
@@ -333,117 +228,59 @@ Unknown / needs manual inspection
 
 ### Phase 6 — Behavioral smoke-test design
 
-Smoke tests must cover behavior, not just imports.
+Smoke tests must cover behavior, not just imports. Always consider: success path, failure path, cleanup path, early return path, repeated-call path, serialization round trip, transaction boundaries, empty/null/edge inputs.
 
-Always consider:
-
-- success path
-- failure path
-- cleanup path
-- early return path
-- repeated-call path
-- serialization/deserialization round trip
-- database transaction boundaries
-- external API parsing behavior
-- empty/null/edge inputs
-
-For lifecycle-sensitive code, explicitly test pairs and cleanup guarantees:
+For lifecycle-sensitive code, test pairs and cleanup guarantees:
 
 ```text
-save -> close
-open -> close
-connect -> close
-commit -> close
-exception -> rollback -> close
-read -> close
-write -> flush -> close
+save -> close     open -> close     connect -> close
+commit -> close   exception -> rollback -> close
+read -> close     write -> flush -> close
 ```
 
-If the repo has no test suite, create a small local smoke script or pytest file, but keep it isolated and easy to remove.
+If the repo has no test suite, create a small local smoke script or pytest file — keep it isolated and easy to remove.
 
 ### Phase 7 — Local validation
 
-Run only local checks. Prefer the repo's existing commands.
-
-Examples:
+Run only local checks, preferring the repo's existing commands:
 
 ```bash
 python --version
 python -m pip check
 python -m pytest
-python -m pytest tests/path/to/relevant_tests.py -q
 python -m compileall .
 ```
 
-For Python 3.7 -> 3.10 migrations, also check:
+For Python 3.7 → 3.10 migrations, also check:
 
 ```bash
-python -m compileall .
 rg -n "from collections import Mapping|MutableMapping|Sequence" .
 rg -n "asyncio\.coroutine|loop=|imp\.|distutils" .
-rg -n "typing_extensions|dataclasses|importlib_metadata" .
 ```
 
-If dependency resolution fails, tests cannot pass, or the lockfile explodes, abort and reset:
+If dependency resolution fails or tests cannot pass, abort and reset:
 
 ```bash
-git checkout -- .
-git clean -fd
+git checkout -- . && git clean -fd
 ```
 
-Report the failure in the final risk report under "Merge risk" and recommend manual resolution.
+Report the failure in the final risk report and recommend manual resolution.
 
 ### Phase 8 — Final report
 
-Always end with this structure:
+Always end with this structure (see `checklists/final-report-template.md` for a blank template):
 
 ```text
-Upgrade branch
-- branch name
-- base branch
-
-Alerts addressed
-- package: old -> new
-- manifest
-- severity
-- direct/transitive
-
-Transitive dependency notes
-- which direct dependency pins the vulnerable package
-- whether bumping the parent resolves it
-
-Files changed
-- dependency files
-- source files
-- tests/smoke scripts
-
-Changelog/migration risks reviewed
-- item
-- local search performed
-- repo impact
-
-Suspicious findings
-- changed risky behavior
-- untouched affected files
-- lifecycle changes
-- missing tests
-
-Local validation
-- commands run
-- result
-- failures/skips
-
-Merge risk
-- Low / Medium / High
-- why
-
-Required human checks before PR/merge
-- checklist
-
-Suggested PR body
-- concise summary
-- risk notes
-- tests run
+Upgrade branch          — branch name, base branch
+Alerts addressed        — package: old -> new, manifest, severity, direct/transitive
+Transitive notes        — which direct dep pins the vulnerable package
+Files changed           — dependency files, source files, tests/smoke scripts
+Changelog risks         — item, local search performed, repo impact
+Suspicious findings     — changed risky behavior, untouched affected files, lifecycle changes, missing tests
+Local validation        — commands run, result, failures/skips
+Merge risk              — Low / Medium / High + reason
+Required human checks   — checklist
+Suggested PR body       — summary, risk notes, tests run
 ```
 
 When the user is ready to create the PR:
@@ -453,38 +290,24 @@ git push -u origin <branch-name>
 gh pr create --title "..." --body "..."
 ```
 
-Only run these commands when the user explicitly asks. Do not push or create PRs automatically.
+Only run these when the user explicitly asks.
 
 ## Package profiles
 
-Use profiles when available, but do not rely on them exclusively. The changelog for the exact version range is still required for non-trivial updates.
+Use profiles when available, but do not rely on them exclusively. The changelog for the exact version range is still required. Profiles provide general search patterns; correlate them to the exact version jump. A SQLAlchemy profile for 1.x → 2.x is critical; for 2.0.x → 2.0.y patch bumps, trim to deprecation warnings only.
 
-**Important:** Profiles provide general search patterns for a package family. Always correlate the profile to the exact version jump in the alert. For example, a SQLAlchemy profile is most relevant for 1.x -> 2.x migrations but may produce irrelevant noise for a 2.0.x -> 2.0.y patch bump. Focus on the changes documented in the changelog for the specific version range.
-
-Available profiles in this skill:
-
-- `profiles/python-runtime.md`
-- `profiles/sqlalchemy.md`
-- `profiles/pydantic.md`
-- `profiles/pandas.md`
-- `profiles/pytest.md`
-- `profiles/requests-urllib3-httpx.md`
+Available profiles: `lifecycle`, `sqlalchemy`, `pydantic`, `pandas`, `http`, `pytest`, `python-runtime`.
 
 ## Rollback guidance
 
-If at any phase the upgrade cannot proceed cleanly:
+If the upgrade cannot proceed cleanly:
 
 ```bash
-# Discard all uncommitted changes
-git checkout -- .
-git clean -fd
-
-# Delete the branch entirely if needed
-git checkout main
-git branch -D dependabot/<topic>-<date>
+git checkout -- . && git clean -fd   # discard uncommitted changes
+git checkout main && git branch -D dependabot/<topic>-<date>  # delete branch entirely
 ```
 
-Report the failure clearly in the final report and recommend manual resolution or a different upgrade path.
+Report the failure clearly and recommend manual resolution.
 
 ## Good agent prompt
 
