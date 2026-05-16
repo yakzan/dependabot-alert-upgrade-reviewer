@@ -30,3 +30,7 @@ rg -n "close\(|with requests|with httpx" .
 - verify retry policy still applies
 - verify sessions/clients are closed
 - verify TLS/proxy settings are preserved
+
+## Version awareness
+
+This profile is most relevant for urllib3 1.x -> 2.x or requests major bumps where TLS, retry, and exception behavior changed. Patch bumps rarely need the full profile; correlate the search patterns to the exact version jump in the alert.

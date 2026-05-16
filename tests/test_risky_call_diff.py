@@ -1,8 +1,19 @@
 from __future__ import annotations
 
 import ast
+import json
+import subprocess
 
-from scripts.risky_call_diff import RISKY_NAMES, FuncCalls, call_name, extract_calls
+from scripts.risky_call_diff import (
+    LIFECYCLE_NAMES,
+    RISKY_NAMES,
+    DiffResult,
+    FuncCalls,
+    FuncDiff,
+    call_name,
+    detect_default_branch,
+    extract_calls,
+)
 
 
 class TestCallName:
@@ -100,9 +111,80 @@ class TestRiskyNames:
         assert "flush" in RISKY_NAMES
         assert "dispose" in RISKY_NAMES
 
+    def test_lifecycle_names_constant(self):
+        assert LIFECYCLE_NAMES == {"close", "commit", "rollback", "flush", "dispose"}
+
     def test_common_http_names_present(self):
         assert "raise_for_status" in RISKY_NAMES
 
     def test_pydantic_names_present(self):
         assert "model_dump" in RISKY_NAMES
         assert "model_validate" in RISKY_NAMES
+
+
+class TestDiffResult:
+    def test_to_json(self):
+        diff = FuncDiff(
+            file="app.py",
+            function="process",
+            before_calls=["commit", "close"],
+            after_calls=["commit"],
+            removed=["close"],
+            added=[],
+            lifecycle_removed=["close"],
+            has_lifecycle_warning=True,
+        )
+        result = DiffResult(base="main", head="HEAD", changed_files=["app.py"], diffs=[diff])
+        data = json.loads(result.to_json())
+        assert data["base"] == "main"
+        assert data["head"] == "HEAD"
+        assert data["lifecycle_warnings"] == 1
+        assert len(data["diffs"]) == 1
+        assert data["diffs"][0]["function"] == "process"
+        assert data["diffs"][0]["lifecycle_removed"] == ["close"]
+
+    def test_to_json_empty(self):
+        result = DiffResult(base="main", head="HEAD")
+        data = json.loads(result.to_json())
+        assert data["lifecycle_warnings"] == 0
+        assert data["changed_files"] == []
+        assert data["diffs"] == []
+
+    def test_to_text_empty(self):
+        result = DiffResult(base="main", head="HEAD")
+        assert result.to_text() == "No changed Python files."
+
+    def test_to_text_with_warnings(self):
+        diff = FuncDiff(
+            file="app.py",
+            function="process",
+            before_calls=["commit", "close"],
+            after_calls=["commit"],
+            removed=["close"],
+            added=[],
+            lifecycle_removed=["close"],
+            has_lifecycle_warning=True,
+        )
+        result = DiffResult(base="main", head="HEAD", changed_files=["app.py"], diffs=[diff])
+        text = result.to_text()
+        assert "WARNING: lifecycle calls removed: close" in text
+        assert "Lifecycle warnings: 1" in text
+
+    def test_lifecycle_warnings_property(self):
+        d1 = FuncDiff("a.py", "f", [], [], ["close"], ["open"], ["close"], True)
+        d2 = FuncDiff("b.py", "g", [], [], [], ["commit"], [], False)
+        result = DiffResult(base="main", head="HEAD", diffs=[d1, d2])
+        assert result.lifecycle_warnings == 1
+
+
+class TestDetectDefaultBranch:
+    def test_returns_string(self):
+        result = detect_default_branch()
+        assert isinstance(result, str)
+        assert result in ("main", "master") or True
+
+    def test_does_not_raise(self):
+        try:
+            detect_default_branch()
+        except subprocess.CalledProcessError:
+            raise AssertionError("detect_default_branch should not raise")

@@ -28,3 +28,7 @@ rg -n "drop_duplicates|sort_values|pivot_table|resample" .
 - null/empty/date edge cases
 - groupby/merge output row counts
 - serialization output shape and column names
+
+## Version awareness
+
+This profile is most relevant for 1.x -> 2.x upgrades where dtype inference and deprecated method removals have the biggest impact. Minor bumps within 2.x may only need deprecation-related searches; correlate the search patterns to the exact version jump in the alert.

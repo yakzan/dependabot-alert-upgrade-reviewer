@@ -25,3 +25,7 @@ rg -n "addopts|pytest.ini|tox.ini|pyproject.toml" .
 - run full local test suite if feasible
 - compare test collection count before/after if possible
 - inspect warnings promoted to errors
+
+## Version awareness
+
+This profile is most relevant for major version bumps (e.g., 7.x -> 8.x) where plugin compatibility is the primary concern. Minor or patch bumps rarely need the full profile; correlate the search patterns to the exact version jump in the alert.

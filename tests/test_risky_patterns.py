@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from scripts.risky_patterns import PROFILES, DEFAULT_IGNORES, iter_py_files
+from scripts.risky_patterns import PROFILES, DEFAULT_IGNORES, PatternHit, ScanResult, iter_py_files, scan_patterns
 
 
 class TestProfiles:
@@ -66,3 +67,62 @@ class TestIterPyFiles:
     def test_empty_dir(self, tmp_path: Path):
         result = list(iter_py_files(tmp_path))
         assert result == []
+
+
+class TestScanPatterns:
+    def test_finds_matching_pattern(self, tmp_path: Path):
+        (tmp_path / "app.py").write_text("session.query(User)\nengine.execute(stmt)\n")
+        result = scan_patterns(tmp_path, [r"session\.query"])
+        assert result.total == 1
+        assert result.hits[0].pattern == r"session\.query"
+        assert "session.query" in result.hits[0].content
+
+    def test_multiple_profiles(self, tmp_path: Path):
+        (tmp_path / "app.py").write_text("commit()\nclose()\nread_csv('data.csv')\n")
+        patterns = PROFILES["lifecycle"] + PROFILES["pandas"]
+        result = scan_patterns(tmp_path, patterns)
+        assert result.total >= 3
+
+    def test_no_matches(self, tmp_path: Path):
+        (tmp_path / "app.py").write_text("x = 1\ny = 2\n")
+        result = scan_patterns(tmp_path, [r"nonexistent_pattern_xyz"])
+        assert result.total == 0
+        assert result.hits == []
+
+
+class TestScanResult:
+    def test_to_json(self):
+        result = ScanResult(hits=[
+            PatternHit(file="a.py", line=1, pattern=r"commit\(", content="commit()"),
+            PatternHit(file="b.py", line=5, pattern=r"close\(", content="conn.close()"),
+        ])
+        data = json.loads(result.to_json())
+        assert data["total"] == 2
+        assert len(data["hits"]) == 2
+        assert data["hits"][0]["file"] == "a.py"
+        assert data["hits"][0]["line"] == 1
+        assert data["hits"][0]["pattern"] == r"commit\("
+        assert data["hits"][1]["content"] == "conn.close()"
+
+    def test_to_json_empty(self):
+        result = ScanResult()
+        data = json.loads(result.to_json())
+        assert data["total"] == 0
+        assert data["hits"] == []
+
+    def test_to_text(self):
+        result = ScanResult(hits=[
+            PatternHit(file="a.py", line=1, pattern=r"commit\(", content="commit()"),
+        ])
+        text = result.to_text()
+        assert "a.py:1: [commit\\(] commit()" in text
+        assert "Total hits: 1" in text
+
+    def test_to_text_empty(self):
+        result = ScanResult()
+        text = result.to_text()
+        assert "Total hits: 0" in text
+
+    def test_total_property(self):
+        result = ScanResult(hits=[PatternHit(file="a.py", line=1, pattern="x", content="x")])
+        assert result.total == 1

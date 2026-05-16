@@ -29,3 +29,7 @@ rg -n "fetchone\(|fetchall\(|scalar\(|mappings\(" .
 - readonly query path works
 - repeated execution does not exhaust pool/connections
 - result access still returns expected shape
+
+## Version awareness
+
+This profile is most relevant for 1.3/1.4 -> 2.x upgrades where breaking API and behavior changes are concentrated. Patch bumps within 2.x generally don't need the full profile; correlate the search patterns to the exact version jump in the alert and trim accordingly.

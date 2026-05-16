@@ -30,3 +30,7 @@ rg -n "python_requires|requires-python|Programming Language :: Python :: 3\.7" .
 - run minimal job/task execution locally
 - run serialization/deserialization round trips
 - run dependency import checks with `python -m pip check`
+
+## Version awareness
+
+This profile is most relevant for 3.7 -> 3.10+ transitions where removed stdlib modules and typing changes are concentrated. Bumps within 3.10+ generally don't need this profile; correlate the search patterns to the exact version jump in the alert.

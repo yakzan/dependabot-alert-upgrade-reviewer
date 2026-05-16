@@ -27,3 +27,7 @@ rg -n "allow_population_by_field_name|populate_by_name|orm_mode|from_attributes"
 - serialize model to API/DB format
 - check aliases/defaults/nulls/enums/datetimes
 - run FastAPI route schema generation if applicable
+
+## Version awareness
+
+This profile is most relevant for 1.x -> 2.x upgrades where validators, serialization, and settings handling changed significantly. Patch bumps within 2.x generally don't need the full profile; correlate the search patterns to the exact version jump in the alert.

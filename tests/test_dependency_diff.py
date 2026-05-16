@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from scripts.dependency_diff import DEP_FILES, is_dep_file
+import json
+import subprocess
+
+from scripts.dependency_diff import DEP_FILES, DepDiffResult, detect_default_branch, is_dep_file
 
 
 class TestIsDepFile:
@@ -71,3 +74,54 @@ class TestIsDepFile:
             "tox.ini",
             ".python-version",
         )
+
+
+class TestDepDiffResult:
+    def test_to_json_with_diffs(self):
+        result = DepDiffResult(
+            base="main",
+            head="HEAD",
+            dep_files=["requirements.txt"],
+            diffs={"requirements.txt": "--- a/requirements.txt\n+++ b/requirements.txt\n"},
+        )
+        data = json.loads(result.to_json())
+        assert data["base"] == "main"
+        assert data["head"] == "HEAD"
+        assert data["dep_files"] == ["requirements.txt"]
+        assert "--- a/requirements.txt" in data["diffs"]["requirements.txt"]
+
+    def test_to_json_no_changes(self):
+        result = DepDiffResult(base="main", head="HEAD")
+        data = json.loads(result.to_json())
+        assert data["dep_files"] == []
+        assert data["diffs"] == {}
+
+    def test_to_text_no_changes(self):
+        result = DepDiffResult(base="main", head="HEAD")
+        assert "No dependency/runtime files changed." in result.to_text()
+
+    def test_to_text_with_changes(self):
+        result = DepDiffResult(
+            base="main",
+            head="HEAD",
+            dep_files=["pyproject.toml"],
+            diffs={"pyproject.toml": "+requests>=2.28"},
+        )
+        text = result.to_text()
+        assert "Dependency/runtime files changed:" in text
+        assert "- pyproject.toml" in text
+        assert "--- pyproject.toml ---" in text
+        assert "+requests>=2.28" in text
+
+
+class TestDetectDefaultBranch:
+    def test_returns_string(self):
+        result = detect_default_branch()
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_does_not_raise(self):
+        try:
+            detect_default_branch()
+        except subprocess.CalledProcessError:
+            raise AssertionError("detect_default_branch should not raise")
