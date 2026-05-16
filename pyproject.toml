@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dependabot-alert-upgrade-reviewer"
+version = "0.1.0"
+description = "Dependabot alert upgrade review helper scripts"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+dependency-diff = "scripts.dependency_diff:main"
+risky-call-diff = "scripts.risky_call_diff:main"
+risky-patterns = "scripts.risky_patterns:main"
+
+[tool.setuptools.packages.find]
+include = ["scripts*"]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.uv]
+package = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
