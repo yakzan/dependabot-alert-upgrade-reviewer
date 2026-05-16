@@ -1,6 +1,6 @@
 ---
 name: dependabot-alert-upgrade-reviewer
-description: Use when a coding agent needs to address or review Python Dependabot alerts by creating an isolated upgrade branch, applying minimal dependency changes, checking official changelogs and migration guides, searching repo-local impact, running local smoke tests, and preparing a skeptical PR risk report. Useful for Codex, Copilot CLI, and other coding agents working in Python repositories with pip, pip-tools, Poetry, uv, Pipenv, setup.py, setup.cfg, or lockfile-based dependency workflows.
+description: Python-only. Use when a coding agent needs to address or review Dependabot security alerts in a Python repository (pip, pip-tools, Poetry, uv, Pipenv, setup.py, setup.cfg, or lockfile-based workflows). The protocol creates an isolated upgrade branch, applies the minimum dependency change, checks official changelogs and migration guides for the exact version jump, searches repo-local impact, runs local smoke tests, and produces a skeptical PR risk report. Works with Codex, Copilot CLI, and other terminal coding agents.
 ---
 
 # Dependabot Alert Upgrade Reviewer
@@ -12,6 +12,18 @@ This is an agent protocol with small deterministic helpers — not an auto-migra
 ## Scope
 
 **Python repositories.** The workflow and helper scripts target Python dependency managers (pip, pip-tools, Poetry, uv, Pipenv, setup.py/setup.cfg) and Python-specific migration patterns. Branch setup, changelog research, and the final report are applicable to other ecosystems, but scripts, profiles, and search patterns are Python-specific.
+
+## Prerequisites
+
+Tools the protocol assumes are available on the agent's host:
+
+- `git` — required for branch creation and diff-based scripts.
+- Python 3.10+ — required to run the helper scripts.
+- `gh` (GitHub CLI) — used for listing Dependabot alerts and (when authorized) creating the PR. Optional: if missing, ask the user for alert details and skip PR creation.
+- `rg` (ripgrep) — used in manual searches. `grep -rn` is an acceptable fallback.
+- `pipdeptree` — used in Phase 1 for transitive dependency tracing on pip-based projects. Optional for Poetry/uv (use `poetry show --tree` / `uv pip show`).
+
+Missing optional tools are not blockers; degrade gracefully and note the gap in the final report.
 
 ## Agent compatibility
 
@@ -63,17 +75,22 @@ Split into separate branches only if alerts conflict. Do not push or create the 
 
 ## Hard rules
 
-1. Never work directly on `master`, `main`, or a protected branch.
-2. Never claim the upgrade is proven safe solely because tests pass.
-3. Never inspect only changed files — also inspect suspicious untouched files.
-4. Never summarize changelogs without mapping them to repo-local searches.
-5. Never push, create PRs, or deploy unless the user explicitly authorizes it.
-6. Run only local tests unless the user explicitly authorizes external systems.
-7. Prefer the smallest dependency change that resolves the alert.
-8. Keep unrelated formatting and refactors out of the branch.
-9. If Python runtime migration is required, treat it as a separate risk area.
-10. Always produce a final risk report and smoke-test checklist.
-11. Never discard changes, clean untracked files, delete branches, push, or create PRs unless the user explicitly authorizes that action.
+**Never (without explicit user approval):**
+
+1. Work directly on `master`, `main`, or a protected branch.
+2. Push, create PRs, or deploy.
+3. Run tests or scans against external/shared systems — local validation only.
+4. Discard changes (`git restore`, `git checkout --`), clean untracked files (`git clean`), or delete branches.
+
+**Always:**
+
+1. Prefer the smallest dependency change that resolves the alert.
+2. Keep unrelated formatting and refactors out of the branch.
+3. Inspect both changed files *and* suspicious untouched files affected by the version jump.
+4. Map every changelog item to a concrete repo-local search before claiming impact.
+5. Treat a Python runtime bump (e.g., 3.7 → 3.10) as a separate risk area.
+6. Produce the final risk report and smoke-test checklist at the end.
+7. Remember that passing tests are not proof of safety — they are weak evidence.
 
 ## Overall workflow
 
@@ -116,7 +133,7 @@ python -m pip show <pkg> && python -m pipdeptree -p <pkg>
 
 ### Phase 2 — Create an upgrade plan before editing
 
-For each alert determine: current version, minimum patched version, Python version constraints, direct vs transitive, which package manager is used. Inspect manifest files:
+For each alert determine: current version, minimum patched version, Python version constraints, direct vs transitive, which package manager is used. Skim the breaking-changes section of the official changelog *before* committing to a target version — if the planned bump crosses a major version with breaking lifecycle or API changes, plan for a full Phase 4 scout and budget time accordingly. Inspect manifest files:
 
 ```bash
 find . -maxdepth 3 \( -name 'pyproject.toml' -o -name 'requirements*.txt' -o -name 'poetry.lock' -o -name 'uv.lock' -o -name 'Pipfile.lock' -o -name 'setup.py' -o -name 'setup.cfg' -o -name 'tox.ini' -o -name '.python-version' \)
@@ -154,6 +171,8 @@ git diff --stat
 ```
 
 Flag noisy lockfile explosions or unrelated dependency changes.
+
+If Phase 4 later reveals the planned bump is riskier than expected (e.g., a removed API the repo depends on heavily, or a runtime requirement the project can't meet), return to Phase 2 and revise the plan — pick a smaller patched version, take a different transitive route, or split the work into multiple branches — before continuing.
 
 ### Phase 4 — Changelog and migration-guide scout
 
@@ -223,6 +242,7 @@ rg -n "parse_obj|dict\(|json\(|BaseModel|validator|root_validator" .
 - **Decorator-based patterns** — `@contextmanager` or `@pytest.fixture` resource lifecycle is invisible to AST walk
 - **Chained/composed calls** — `obj.get_session().commit()` only detects the outermost call
 - **Dynamic dispatch** — `getattr(obj, 'commit')()` or `__call__` overrides
+- **Same-name functions in one file** — two methods named `save` on different classes (or two `__init__`s) are pooled into a single diff entry by name. Removed or added calls can appear attributed to the wrong overload. When a file defines multiple functions sharing a name, manually re-inspect that file rather than trusting the diff line-for-line.
 
 Treat `risky-call-diff` output as a starting point for investigation, not exhaustive coverage. Always supplement with `risky-patterns` (regex scan) and manual `rg` searches.
 
@@ -276,20 +296,7 @@ If dependency resolution fails or tests cannot pass, stop. Report the failure, c
 
 ### Phase 8 — Final report
 
-Always end with this structure (see `checklists/final-report-template.md` for a blank template):
-
-```text
-Upgrade branch          — branch name, base branch
-Alerts addressed        — package: old -> new, manifest, severity, direct/transitive
-Transitive notes        — which direct dep pins the vulnerable package
-Files changed           — dependency files, source files, tests/smoke scripts
-Changelog risks         — item, local search performed, repo impact
-Suspicious findings     — changed risky behavior, untouched affected files, lifecycle changes, missing tests
-Local validation        — commands run, result, failures/skips
-Merge risk              — Low / Medium / High + reason
-Required human checks   — checklist
-Suggested PR body       — summary, risk notes, tests run
-```
+Always end with the final risk report. Fill in `checklists/final-report-template.md` — it is the canonical structure (upgrade branch, alerts addressed, files changed, changelog risks reviewed, suspicious findings, local validation, merge risk + reason, required human checks, suggested PR body). Do not invent a different shape.
 
 When the user is ready to create the PR:
 
@@ -330,14 +337,4 @@ Only run these after explicit user approval.
 
 ## General coding-agent prompt
 
-```text
-Use the Dependabot Alert Upgrade Reviewer protocol in <skill-dir>/SKILL.md.
-
-We do not have a PR yet. Start from the current repository state. Do not work on main/master. Create a dedicated upgrade branch if the tree is clean. Inspect Dependabot alerts, choose the smallest safe dependency upgrade, review official changelogs/migration notes for the exact version jump, apply the dependency change using the repo's existing package manager, commit the changes if allowed, search changed and unchanged code for affected APIs, add or propose behavior-level smoke tests, run only local validation, and finish with the protocol's final risk report.
-
-When multiple alerts exist, batch related alerts on one branch and note any conflicts.
-
-Be especially skeptical of resource lifecycle changes such as save -> close, commit -> rollback -> close, open -> close, connect -> close, and exception cleanup paths.
-
-Do not push or create a PR unless I explicitly ask.
-```
+For agents without skill discovery, point them at `examples/agent-prompt.md` — that file is the canonical bootstrap prompt and includes fork/upstream handling and the skill-discovery hint. Do not maintain a second copy here.

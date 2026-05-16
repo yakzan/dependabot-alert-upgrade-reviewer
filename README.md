@@ -58,7 +58,7 @@ python <skill-dir>/scripts/risky_patterns.py --profile sqlalchemy --json
 
 ### AST helper limitations
 
-`risky-call-diff` uses Python AST parsing to detect function calls. It is a heuristic, not a semantic analyzer. It will **not** catch aliased imports, indirect calls (`fn = obj.commit; fn()`), decorator-based lifecycle patterns, or chained calls (`obj.get_session().commit()` only detects the outermost). Treat its output as a starting point, supplemented by `risky-patterns` regex scans and manual `rg` searches.
+`risky-call-diff` uses Python AST parsing to detect function calls. It is a heuristic, not a semantic analyzer. It will **not** catch aliased imports, indirect calls (`fn = obj.commit; fn()`), decorator-based lifecycle patterns, chained calls (`obj.get_session().commit()` only detects the outermost), or same-name functions in one file (two `save` methods on different classes get pooled into a single diff entry). Treat its output as a starting point, supplemented by `risky-patterns` regex scans and manual `rg` searches.
 
 ## Monorepos
 

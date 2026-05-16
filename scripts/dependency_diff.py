@@ -54,8 +54,14 @@ def detect_default_branch() -> str:
 
 
 def is_dep_file(path: str) -> bool:
+    parts = Path(path).parts
     name = Path(path).name
-    return any(name.startswith(prefix) or name == prefix for prefix in DEP_FILES)
+    if any(name.startswith(prefix) or name == prefix for prefix in DEP_FILES):
+        return True
+    # Directory-style layouts: requirements/dev.txt, constraints/prod.in, etc.
+    if name.endswith((".txt", ".in")) and any(p in ("requirements", "constraints") for p in parts[:-1]):
+        return True
+    return False
 
 
 def get_dep_diff(base: str, head: str, path: str) -> str:

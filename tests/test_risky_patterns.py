@@ -91,6 +91,22 @@ class TestScanPatterns:
         assert result.total == 0
         assert result.hits == []
 
+    def test_python_runtime_skips_benign_collections_imports(self, tmp_path: Path):
+        (tmp_path / "app.py").write_text(
+            "from collections import OrderedDict, defaultdict, namedtuple, deque\n"
+        )
+        result = scan_patterns(tmp_path, PROFILES["python-runtime"])
+        collections_hits = [h for h in result.hits if "from collections import" in h.pattern]
+        assert collections_hits == []
+
+    def test_python_runtime_flags_moved_abcs(self, tmp_path: Path):
+        (tmp_path / "app.py").write_text(
+            "from collections import Mapping, MutableMapping\n"
+        )
+        result = scan_patterns(tmp_path, PROFILES["python-runtime"])
+        collections_hits = [h for h in result.hits if "from collections import" in h.pattern]
+        assert len(collections_hits) >= 1
+
 
 class TestScanResult:
     def test_to_json(self):

@@ -64,6 +64,24 @@ class TestIsDepFile:
     def test_partial_name_match(self):
         assert is_dep_file("my_requirements.txt") is False
 
+    def test_requirements_dir_layout_txt(self):
+        assert is_dep_file("requirements/dev.txt") is True
+
+    def test_requirements_dir_layout_in(self):
+        assert is_dep_file("requirements/prod.in") is True
+
+    def test_constraints_dir_layout(self):
+        assert is_dep_file("constraints/base.txt") is True
+
+    def test_nested_requirements_dir(self):
+        assert is_dep_file("services/api/requirements/dev.txt") is True
+
+    def test_requirements_dir_non_dep_extension(self):
+        assert is_dep_file("requirements/README.md") is False
+
+    def test_unrelated_dir_with_txt(self):
+        assert is_dep_file("docs/notes.txt") is False
+
     def test_exact_dep_file_list(self):
         assert DEP_FILES == (
             "requirements",

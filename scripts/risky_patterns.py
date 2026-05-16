@@ -72,7 +72,10 @@ PROFILES = {
         r"pytest\.ini", r"conftest\.py",
     ],
     "python-runtime": [
-        r"from collections import",
+        # Moved ABCs: only flag imports of names that moved from `collections` to
+        # `collections.abc` in 3.10. Bare `from collections import` matches benign
+        # imports (OrderedDict, defaultdict, namedtuple, deque, Counter).
+        r"from collections import\s+[^\n]*\b(Mapping|MutableMapping|Sequence|MutableSequence|Set|MutableSet|Iterable|Iterator|Container|Sized|Callable|Hashable|ItemsView|KeysView|ValuesView|Awaitable|Coroutine|AsyncIterable|AsyncIterator)\b",
         r"asyncio\.coroutine", r"get_event_loop", r"loop=",
         r"import imp\b", r"from imp import", r"distutils",
         r"typing_extensions", r"dataclasses", r"importlib_metadata",
