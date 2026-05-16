@@ -296,7 +296,16 @@ Only run these when the user explicitly asks.
 
 Use profiles when available, but do not rely on them exclusively. The changelog for the exact version range is still required. Profiles provide general search patterns; correlate them to the exact version jump. A SQLAlchemy profile for 1.x → 2.x is critical; for 2.0.x → 2.0.y patch bumps, trim to deprecation warnings only.
 
-Available profiles: `lifecycle`, `sqlalchemy`, `pydantic`, `pandas`, `http`, `pytest`, `python-runtime`.
+| Profile | When to use | Key risks covered |
+|---|---|---|
+| `http` | urllib3 1.x→2.x, requests/httpx major bumps | TLS, retry, timeout, session reuse, exception hierarchy |
+| `sqlalchemy` | SQLAlchemy 1.x→2.x | `engine.execute`, `session.query` removal, autocommit, Result API |
+| `pydantic` | Pydantic 1.x→2.x | `parse_obj`/`dict`/`json` removal, validators, BaseSettings move |
+| `pandas` | pandas 1.x→2.x | dtype inference, nullable, deprecated methods, inplace/Copy-on-Write |
+| `pytest` | pytest 7.x→8.x major bumps | plugin compatibility, fixture scoping, deprecation→error, discovery |
+| `python-runtime` | Python 3.7→3.10+ migration | removed stdlib (`imp`, `distutils`), `collections.abc` move, typing |
+
+Each profile file in `profiles/*.md` contains: purpose, common risks, specific `rg` search commands, smoke test guidance, and version-awareness notes. Read the profile files for full pattern lists.
 
 ## Rollback guidance
 
