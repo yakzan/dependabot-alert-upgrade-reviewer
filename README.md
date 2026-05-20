@@ -1,6 +1,6 @@
 # Dependabot Alert Upgrade Reviewer
 
-A protocol for coding agents that creates PRs to address Dependabot alerts in Python repositories. Supports mono- and multi-package repos. Codex can use it as a skill via `SKILL.md` frontmatter; Copilot CLI and similar agents can be pointed at this repository path or given `examples/agent-prompt.md`.
+A protocol for coding agents that creates PRs to address Dependabot alerts in Python repositories. Supports mono- and multi-package repos. The publishable skill lives at `skills/dependabot-alert-upgrade-reviewer/SKILL.md` so `gh skill install` can discover it for GitHub Copilot, Codex, and other Agent Skills-compatible hosts.
 
 It guides the agent to:
 
@@ -14,9 +14,25 @@ It guides the agent to:
 8. propose or add local smoke tests,
 9. produce a merge-risk report and suggest a PR body.
 
-The core value is the protocol in `SKILL.md`. The helper scripts are small, deterministic, and optional.
+The core value is the protocol in `skills/dependabot-alert-upgrade-reviewer/SKILL.md`. The helper scripts are small, deterministic, and optional.
 
-When this repository is used as a helper package for another target repo, run the scripts from the target repo's working directory and reference this package by path:
+## Installation
+
+When running `gh skill install` non-interactively, include the skill name `dependabot-alert-upgrade-reviewer`.
+
+Install for GitHub Copilot CLI:
+
+```bash
+gh skill install yakzan/dependabot-alert-upgrade-reviewer dependabot-alert-upgrade-reviewer --agent github-copilot
+```
+
+Install for Codex:
+
+```bash
+gh skill install yakzan/dependabot-alert-upgrade-reviewer dependabot-alert-upgrade-reviewer --agent codex
+```
+
+When this repository is used as a helper package for another target repo, run the scripts from the target repo's working directory and reference the skill directory by path:
 
 ```bash
 python <skill-dir>/scripts/dependency_diff.py --json
