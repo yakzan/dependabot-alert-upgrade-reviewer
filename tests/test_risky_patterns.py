@@ -15,6 +15,7 @@ class TestProfiles:
         assert "http" in PROFILES
         assert "pytest" in PROFILES
         assert "python-runtime" in PROFILES
+        assert "optional-deps" in PROFILES
 
     def test_profiles_are_valid_regex(self):
         import re
@@ -106,6 +107,19 @@ class TestScanPatterns:
         result = scan_patterns(tmp_path, PROFILES["python-runtime"])
         collections_hits = [h for h in result.hits if "from collections import" in h.pattern]
         assert len(collections_hits) >= 1
+
+    def test_optional_deps_flags_pandas_excel_path(self, tmp_path: Path):
+        (tmp_path / "app.py").write_text(
+            "import pandas as pd\n"
+            "df = pd.read_excel('input.xlsx')\n"
+            "with pd.ExcelWriter('out.xlsx', engine='openpyxl') as writer:\n"
+            "    df.to_excel(writer)\n"
+        )
+        result = scan_patterns(tmp_path, PROFILES["optional-deps"])
+        contents = "\n".join(hit.content for hit in result.hits)
+        assert "read_excel" in contents
+        assert "ExcelWriter" in contents
+        assert "to_excel" in contents
 
 
 class TestScanResult:

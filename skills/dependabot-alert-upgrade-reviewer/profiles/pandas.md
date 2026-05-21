@@ -10,6 +10,7 @@ Use for pandas major/minor upgrades, especially 1.x -> 2.x. Minor bumps within 2
 - `groupby` / `agg` / `merge` edge-case behavior changes
 - `merge`/`join` null-key handling differences
 - `read_csv` / `read_excel` encoding, dtype, and column inference changes
+- optional I/O backends missing at runtime: `openpyxl`, `xlrd`, `xlsxwriter`, `pyarrow`, `fastparquet`, SQLAlchemy, database drivers
 - removed deprecated methods: `append`, `ix`, `iteritems`
 - `inplace=True` no longer copies (Copy-on-Write in 3.0)
 - `resample`, `rolling` API changes or deprecations
@@ -18,7 +19,9 @@ Use for pandas major/minor upgrades, especially 1.x -> 2.x. Minor bumps within 2
 ## Searches
 
 ```bash
-rg -n "read_csv|read_excel|to_datetime|to_numeric" .
+rg -n "read_csv|read_excel|to_excel|ExcelWriter|to_datetime|to_numeric" .
+rg -n "read_sql|to_sql|read_parquet|to_parquet|read_feather|to_feather|read_orc|to_orc" .
+rg -n "openpyxl|xlrd|xlsxwriter|pyarrow|fastparquet|sqlalchemy|psycopg2|mysqlclient|asyncpg" .
 rg -n "\.astype\b|\.fillna\b|\.dropna\b|\.drop_duplicates\b" .
 rg -n "\.groupby\b|\.agg\b|\.merge\b|\.join\b|\.concat\b" .
 rg -n "\.append\b|\.ix\[|\.iteritems\b" .
@@ -31,6 +34,9 @@ rg -n "Int64Dtype|StringDtype|BooleanDtype|Float64Dtype" .
 ## Smoke tests
 
 - read representative input file with explicit dtype expectations
+- if Excel APIs are used, import the selected backend (`openpyxl`, `xlrd`, or `xlsxwriter`) and read/write a tiny workbook
+- if SQL APIs are used, import SQLAlchemy and the configured database driver; run a local/mocked query path
+- if parquet/feather/orc APIs are used, import `pyarrow` or `fastparquet` and round-trip a tiny frame
 - preserve expected dtypes for key columns (numeric, datetime, string)
 - null/empty/date edge cases in aggregation and merge
 - groupby/merge output row counts match expectations

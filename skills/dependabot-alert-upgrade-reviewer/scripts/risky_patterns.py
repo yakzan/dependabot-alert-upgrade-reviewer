@@ -45,12 +45,22 @@ PROFILES = {
         r"computed_field", r"field_serializer",
     ],
     "pandas": [
-        r"read_csv", r"read_excel", r"to_datetime", r"to_numeric",
+        r"read_csv", r"read_excel", r"to_excel", r"ExcelWriter", r"to_datetime", r"to_numeric",
+        r"read_sql", r"to_sql", r"read_parquet", r"to_parquet", r"read_feather", r"to_feather",
+        r"read_orc", r"to_orc",
         r"\.astype\b", r"\.fillna\b", r"\.dropna\b", r"\.drop_duplicates\b",
         r"\.groupby\b", r"\.agg\b", r"\.merge\b", r"\.join\b", r"\.concat\b",
         r"\.append\b", r"\.ix\[", r"\.iteritems\b",
         r"\.sort_values\b", r"\.pivot_table\b", r"\.resample\b", r"\.rolling\b",
         r"inplace=True", r"copy=True", r"infer_objects",
+    ],
+    "optional-deps": [
+        r"read_excel", r"to_excel", r"ExcelWriter", r"openpyxl", r"xlrd", r"xlsxwriter",
+        r"read_sql", r"to_sql", r"sqlalchemy", r"psycopg2", r"psycopg", r"mysqlclient",
+        r"MySQLdb", r"pymysql", r"asyncpg", r"sqlite3",
+        r"read_parquet", r"to_parquet", r"read_feather", r"to_feather", r"read_orc", r"to_orc",
+        r"pyarrow", r"fastparquet",
+        r"requests\[socks\]", r"PySocks", r"socks",
     ],
     "http": [
         r"requests\.", r"urllib3", r"httpx\.",

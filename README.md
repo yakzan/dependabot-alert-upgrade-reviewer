@@ -7,12 +7,14 @@ It guides the agent to:
 1. create a safe non-master branch,
 2. inspect Dependabot alerts (supports multiple alerts, batched by topic),
 3. choose the smallest safe package upgrade,
-4. read changelogs/migration notes for the exact version jump,
-5. apply the dependency change using the repo's existing package manager,
-6. search the repo for affected APIs,
-7. detect suspicious lifecycle call changes,
-8. propose or add local smoke tests,
-9. produce a merge-risk report and suggest a PR body.
+4. check runtime/platform constraints and resolver installability,
+5. read changelogs/migration notes for the exact version jump,
+6. apply the dependency change using the repo's existing package manager,
+7. create a checkpoint commit only after dependency resolution/install checks pass,
+8. search the repo for affected APIs and optional dependency feature paths,
+9. detect suspicious lifecycle call changes,
+10. propose or add usage-derived local smoke tests,
+11. produce a merge-risk report and suggest a PR body.
 
 The core value is the protocol in `skills/dependabot-alert-upgrade-reviewer/SKILL.md`. The helper scripts are small, deterministic, and optional.
 
@@ -59,10 +61,11 @@ uv run risky-call-diff --json
 uv run risky-patterns --profile sqlalchemy --json
 uv run risky-patterns --profile pydantic --profile http --json
 uv run risky-patterns --profile python-runtime --profile pytest --json
+uv run risky-patterns --profile optional-deps --json
 uv run risky-patterns --pattern 'session\.query' --json
 ```
 
-Available profiles: `lifecycle`, `sqlalchemy`, `pydantic`, `pandas`, `http`, `pytest`, `python-runtime`.
+Available profiles: `lifecycle`, `sqlalchemy`, `pydantic`, `pandas`, `http`, `pytest`, `python-runtime`, `optional-deps`.
 
 Or directly with Python:
 

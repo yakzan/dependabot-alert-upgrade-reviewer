@@ -22,17 +22,32 @@
 | Risk | Source | Local searches | Repo impact |
 |---|---|---|---|
 
+## Constraint and installability preflight
+
+- Security floor:
+- Runtime/platform constraints:
+- Resolver/install command:
+- Coupled upgrades detected:
+- Metadata check:
+- Checkpoint commit status:
+
 ## Suspicious findings
 
 - Changed risky behavior:
 - Untouched affected files:
 - Lifecycle changes:
+- Optional dependency paths:
 - Missing tests:
 
 ## Local validation
 
 | Command | Result | Notes |
 |---|---|---|
+
+## Usage-derived smoke checks
+
+| Feature path | Required backend/extra | Check | Result |
+|---|---|---|---|
 
 ## Merge risk
 

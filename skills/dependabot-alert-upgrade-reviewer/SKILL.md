@@ -5,7 +5,7 @@ description: Python-only. Use when a coding agent needs to address or review Dep
 
 # Dependabot Alert Upgrade Reviewer
 
-Use this protocol when a coding agent needs to address or review Dependabot alerts. Create a safe, isolated upgrade branch, apply the minimum necessary dependency changes, inspect changelogs for the exact version jump, produce a skeptical review with repo-specific smoke tests, and prepare a ready-to-push PR.
+Use this protocol when a coding agent needs to address or review Dependabot alerts. Create a safe, isolated upgrade branch, apply the minimum necessary dependency changes, prove the dependency set can install on the target runtime before committing, inspect changelogs for the exact version jump, produce a skeptical review with repo-specific smoke tests, and prepare a ready-to-push PR.
 
 This is an agent protocol with small deterministic helpers — not an auto-migration framework. The agent may use package managers, Git, local tests, AST/grep scripts, and changelog research, but must not claim safety without evidence.
 
@@ -89,8 +89,9 @@ Split into separate branches only if alerts conflict. Do not push or create the 
 3. Inspect both changed files *and* suspicious untouched files affected by the version jump.
 4. Map every changelog item to a concrete repo-local search before claiming impact.
 5. Treat a Python runtime bump (e.g., 3.7 → 3.10) as a separate risk area.
-6. Produce the final risk report and smoke-test checklist at the end.
-7. Remember that passing tests are not proof of safety — they are weak evidence.
+6. Treat resolver/install success as necessary but not sufficient; optional backends used by the repo still need usage-derived smoke checks.
+7. Produce the final risk report and smoke-test checklist at the end.
+8. Remember that passing tests are not proof of safety — they are weak evidence.
 
 ## Overall workflow
 
@@ -133,10 +134,22 @@ python -m pip show <pkg> && python -m pipdeptree -p <pkg>
 
 ### Phase 2 — Create an upgrade plan before editing
 
-For each alert determine: current version, minimum patched version, Python version constraints, direct vs transitive, which package manager is used. Skim the breaking-changes section of the official changelog *before* committing to a target version — if the planned bump crosses a major version with breaking lifecycle or API changes, plan for a full Phase 4 scout and budget time accordingly. Inspect manifest files:
+For each alert determine: current version, minimum patched version, Python version constraints, direct vs transitive, which package manager is used. Skim the breaking-changes section of the official changelog *before* committing to a target version — if the planned bump crosses a major version with breaking lifecycle or API changes, plan for a full Phase 4 scout and budget time accordingly. Inspect manifest and runtime files:
 
 ```bash
-find . -maxdepth 3 \( -name 'pyproject.toml' -o -name 'requirements*.txt' -o -name 'poetry.lock' -o -name 'uv.lock' -o -name 'Pipfile.lock' -o -name 'setup.py' -o -name 'setup.cfg' -o -name 'tox.ini' -o -name '.python-version' \)
+find . -maxdepth 3 \( -name 'pyproject.toml' -o -name 'requirements*.txt' -o -name 'constraints*.txt' -o -name 'poetry.lock' -o -name 'uv.lock' -o -name 'Pipfile.lock' -o -name 'setup.py' -o -name 'setup.cfg' -o -name 'tox.ini' -o -name '.python-version' -o -name 'runtime.txt' -o -name 'Dockerfile' -o -name '*.yml' -o -name '*.yaml' \)
+```
+
+Before editing, make the upgrade constraint-aware:
+
+1. Identify the **security floor** from the advisory: first patched version or minimum safe range.
+2. Intersect it with **runtime/platform compatibility**: Python version, OS/base image, architecture, build toolchain, wheels vs source builds, and existing pins.
+3. Run a **resolver preflight** with the repo's package manager to discover coupled upgrades before attempting a full install.
+4. Scan for **optional dependency features** used by the repo, because metadata checks often miss them:
+
+```bash
+python <skill-dir>/scripts/risky_patterns.py --profile optional-deps --json
+rg -n "read_excel|to_excel|ExcelWriter|read_sql|to_sql|read_parquet|to_parquet|openpyxl|xlrd|xlsxwriter|pyarrow|fastparquet|psycopg2|mysqlclient" .
 ```
 
 Produce a short plan per alert:
@@ -144,13 +157,16 @@ Produce a short plan per alert:
 ```text
 Alert: package A current X -> patched >= Y
 Manifest: requirements.txt
-Likely action: bump direct pin or regenerate lockfile
-Python risk: patched version requires Python >= 3.8, repo uses 3.7
+Security floor: >= Y
+Runtime/platform risk: patched version requires Python >= 3.8, repo uses 3.7
 Transitive: pulled in by package B >= 2.0; bumping B may resolve it
+Coupled upgrades likely: package C must move because resolver rejects old pin
+Optional feature risks: pandas Excel path needs openpyxl/xlrd/xlsxwriter smoke coverage
+Likely action: bump direct pin or regenerate lockfile
 Changelog review required: yes/no
 ```
 
-### Phase 3 — Apply minimum dependency changes
+### Phase 3 — Apply minimum dependency changes and create checkpoint
 
 Use the repo's existing dependency workflow. Common commands:
 
@@ -163,7 +179,18 @@ pipenv update <package>                       # Pipenv
 
 If a repo only has `requirements.txt`, edit the direct pin cautiously and install in a local venv.
 
-Commit dependency changes before Phase 5 (the diff-based scripts require committed changes):
+Before committing, run a short **installability gate** in an isolated local environment using the repo's normal workflow:
+
+```bash
+python -m pip install -r requirements.txt     # pip/requirements example
+python -m pip check
+uv pip install -r requirements.txt            # uv/requirements example
+uv pip check
+```
+
+Use equivalent Poetry/Pipenv commands when those tools own the environment. If dependency resolution, install, or metadata checks fail, **do not commit**. Mark the upgrade blocked, record the failing command, the resolver/install error, and the smallest plausible remediation (for example: raise an old pandas/numpy/psycopg2 pin to a version that supports the repo's Python runtime).
+
+Only after resolution, install, and metadata checks are green, create a local **checkpoint commit**. This is a review anchor for Phase 5, not a final/push-ready commit. It may be kept, amended, or dropped after changelog review and smoke testing.
 
 ```bash
 git add -A && git commit -m "bump <package> from X to Y"
@@ -199,7 +226,7 @@ Smoke tests: successful write commits+closes, failed write rolls back+closes, re
 
 ### Phase 5 — Repo-local impact search
 
-**Important:** Phase 3 changes must be committed before running the diff-based scripts. They compare the base branch against HEAD; no committed changes means an empty diff.
+**Important:** Phase 3 changes must be checkpoint-committed before running the diff-based scripts. They compare the base branch against HEAD; no committed changes means an empty diff. If Phase 3 was blocked by resolver/install failure, skip the diff scripts and report the blocker instead of manufacturing a commit.
 
 #### Script purposes
 
@@ -223,6 +250,7 @@ python <skill-dir>/scripts/risky_call_diff.py --json
 python <skill-dir>/scripts/risky_patterns.py --profile sqlalchemy --json
 python <skill-dir>/scripts/risky_patterns.py --profile pydantic --profile http --json
 python <skill-dir>/scripts/risky_patterns.py --profile python-runtime --profile pytest --json
+python <skill-dir>/scripts/risky_patterns.py --profile optional-deps --json
 python <skill-dir>/scripts/risky_patterns.py --pattern 'session\.query' --pattern 'engine\.execute' --json
 ```
 
@@ -262,7 +290,17 @@ Unknown / needs manual inspection
 
 ### Phase 6 — Behavioral smoke-test design
 
-Smoke tests must cover behavior, not just imports. Always consider: success path, failure path, cleanup path, early return path, repeated-call path, serialization round trip, transaction boundaries, empty/null/edge inputs.
+Smoke tests must cover behavior, not just installs or imports. Always consider: success path, failure path, cleanup path, early return path, repeated-call path, serialization round trip, transaction boundaries, empty/null/edge inputs.
+
+Derive smoke tests from the repo-local usage found in Phase 5. For optional dependency features, verify both the backend import and a tiny feature path. Examples:
+
+```text
+pandas read_excel / ExcelWriter -> import openpyxl/xlrd/xlsxwriter and read/write a tiny .xlsx
+pandas read_sql / to_sql        -> import sqlalchemy and the configured DB driver; exercise a local or mocked query path
+pandas parquet/feather/orc      -> import pyarrow or fastparquet and round-trip a tiny frame if used
+HTTP clients with SOCKS/proxy   -> import socks/proxy extras and exercise local construction/config parsing
+database adapters               -> import psycopg2/mysqlclient/asyncpg drivers used by configured URLs
+```
 
 For lifecycle-sensitive code, test pairs and cleanup guarantees:
 
@@ -284,6 +322,8 @@ python -m pip check
 python -m pytest
 python -m compileall .
 ```
+
+Also run the checkpoint-gate commands and the usage-derived optional dependency checks selected in Phase 6. A passing `pip check` does not prove optional extras are present; if the repo uses `read_excel`, `ExcelWriter`, parquet, SQL engines, or native database drivers, verify those exact paths locally.
 
 For Python 3.7 → 3.10 migrations, also check:
 
@@ -317,10 +357,11 @@ Use profiles when available, but do not rely on them exclusively. The changelog 
 | `sqlalchemy` | `profiles/sqlalchemy.md` | SQLAlchemy 1.x→2.x | `engine.execute`, `session.query` removal, autocommit, Result API |
 | `pydantic` | `profiles/pydantic.md` | Pydantic 1.x→2.x | `parse_obj`/`dict`/`json` removal, validators, BaseSettings move |
 | `pandas` | `profiles/pandas.md` | pandas 1.x→2.x | dtype inference, nullable, deprecated methods, inplace/Copy-on-Write |
+| `optional-deps` | Use with relevant package profile | Repos using optional integration paths | pandas Excel/SQL/parquet backends, DB drivers, SOCKS/proxy extras |
 | `pytest` | `profiles/pytest.md` | pytest 7.x→8.x major bumps | plugin compatibility, fixture scoping, deprecation→error, discovery |
 | `python-runtime` | `profiles/python-runtime.md` | Python 3.7→3.10+ migration | removed stdlib (`imp`, `distutils`), `collections.abc` move, typing |
 
-Each profile file contains: purpose, common risks, specific `rg` search commands, smoke test guidance, and version-awareness notes. Read the relevant profile files for full pattern lists. The helper script also has a `lifecycle` profile with generic resource lifecycle patterns; it has no separate reference file because the behavior-level guidance lives in Phase 6.
+Each profile file contains: purpose, common risks, specific `rg` search commands, smoke test guidance, and version-awareness notes. Read the relevant profile files for full pattern lists. The helper script also has `lifecycle` and `optional-deps` profiles without separate reference files because their behavior-level guidance lives in Phase 6.
 
 ## Rollback guidance
 
